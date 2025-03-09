@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -5,40 +6,12 @@
     <title>Isochronous Map Visualization</title>
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-    <script src="dynamic.js" defer></script>
-    <link rel="stylesheet" type="text/css" href="map.css" />
-    <script src="map.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20;
-            padding: 20;
-        }
-        #map-container {
-            width: 60%;
-            height: 400px;
-            margin: 50px auto;
-            border: 5px solid #ccc;
-        }
-        #legend-container {
-            width: 200px;
-            padding: 10px;
-            margin: 20px auto;
-            border: 1px solid #000;
-            text-align: center;
-        }
-    </style>
+    <link rel="stylesheet" href="user_interface_style.css">
+    <script src="user_interface_script.js" defer></script>
 </head>
 <body>
     <h1>Isochronous map visualization for 15min city</h1>
     <div id="map-container"></div>
-    <script>
-        var map = L.map('map-container').setView([47.3769, 8.5417], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-    </script>
     <p>This is an isochrone map for a specific mode of transport. Isochrones represent areas that can be reached within the same time from a given point of interest (POI)</p>
     <div id="legend-container">
         <h3>Legend</h3>

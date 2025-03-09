@@ -1,0 +1,21 @@
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin: 20px;
+    padding: 20px;
+}
+
+#map-container {
+    width: 60%;
+    height: 400px;
+    margin: 50px auto;
+    border: 5px solid #ccc;
+}
+
+#legend-container {
+    width: 200px;
+    padding: 10px;
+    margin: 20px auto;
+    border: 1px solid #000;
+    text-align: center;
+}
