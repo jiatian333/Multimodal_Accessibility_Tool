@@ -5,6 +5,8 @@ document.addEventListener("DOMContentLoaded", function() {
     var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
+    
+    //var marker = L.marker([47.3769, 8.5417]).addTo(map);
 
     // Layers-Control mit einem Basis-Layer hinzufügen
     /*const layersControl = new L.control.layers({}, null, {
@@ -37,4 +39,17 @@ document.addEventListener("DOMContentLoaded", function() {
         }]
     });
     map.addControl(htmlLegend);*/
+
+
+    document.getElementById('goToLocation').addEventListener('click', function() {
+        var lat = parseFloat(document.getElementById('lat').value);
+        var lng = parseFloat(document.getElementById('lng').value);
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+            map.setView([lat, lng], 12);
+            marker.setLatLng([lat, lng]);
+        } else {
+            alert("Bitte gültige Koordinaten eingeben!");
+        }
+    });
 });
