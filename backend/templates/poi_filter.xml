@@ -1,0 +1,8 @@
+<ojp:PointOfInterestFilter>
+  <ojp:PointOfInterestCategory>
+    <ojp:OsmTag>
+      <ojp:Tag>amenity</ojp:Tag>
+      <ojp:Value>${mode}</ojp:Value>
+    </ojp:OsmTag>
+  </ojp:PointOfInterestCategory>
+</ojp:PointOfInterestFilter>

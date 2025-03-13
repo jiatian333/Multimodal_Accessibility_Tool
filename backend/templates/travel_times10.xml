@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OJP xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.siri.org.uk/siri" version="1.0" xmlns:ojp="http://www.vdv.de/ojp" xsi:schemaLocation="http://www.siri.org.uk/siri ../ojp-xsd-v1.0/OJP.xsd">
+    <OJPRequest>
+        <ServiceRequest>
+            <RequestTimestamp>${timestamp}</RequestTimestamp>
+            <RequestorRef>ojpch-performance-test</RequestorRef>
+            <ojp:OJPTripRequest>
+                <RequestTimestamp>${timestamp}</RequestTimestamp>
+                <ojp:Origin>
+                    <ojp:PlaceRef>
+                        <ojp:GeoPosition>
+                            <Longitude>${origin_lon}</Longitude>
+                            <Latitude>${origin_lat}</Latitude>
+                        </ojp:GeoPosition>
+                        <ojp:LocationName>
+                            <ojp:Text>origin</ojp:Text>
+                        </ojp:LocationName>
+                    </ojp:PlaceRef>
+                    <ojp:DepArrTime>${arr}</ojp:DepArrTime>
+                </ojp:Origin>
+                <ojp:Destination>
+                    <ojp:PlaceRef>
+                        <ojp:GeoPosition>
+                            <Longitude>${destination_lon}</Longitude>
+                            <Latitude>${destination_lat}</Latitude>
+                        </ojp:GeoPosition>
+                        <ojp:LocationName>
+                            <ojp:Text>destination</ojp:Text>
+                        </ojp:LocationName>
+                    </ojp:PlaceRef>
+                </ojp:Destination>
+                <ojp:Params>
+                    <ojp:NumberOfResults>${num_results}</ojp:NumberOfResults>
+                    <ojp:IncludeTrackSections>${include_track_sect}</ojp:IncludeTrackSections>
+                    <ojp:IncludeLegProjection>${include_leg_proj}</ojp:IncludeLegProjection>
+                    <ojp:IncludeTurnDescription>${include_turn_desc}</ojp:IncludeTurnDescription>
+                    <ojp:IgnoreRealtimeData>${real_time}</ojp:IgnoreRealtimeData>
+                    <ojp:IncludeIntermediateStops>${include_stops}</ojp:IncludeIntermediateStops>${mode_xml}
+                </ojp:Params>
+            </ojp:OJPTripRequest>
+        </ServiceRequest>
+    </OJPRequest>
+</OJP>
