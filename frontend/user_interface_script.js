@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
     
-    //var marker = L.marker([47.3769, 8.5417]).addTo(map);
+    var marker = L.marker([47.3769, 8.5417]).addTo(map);
 
     // Layers-Control mit einem Basis-Layer hinzufügen
     /*const layersControl = new L.control.layers({}, null, {
@@ -51,5 +51,22 @@ document.addEventListener("DOMContentLoaded", function() {
         } else {
             alert("Bitte gültige Koordinaten eingeben!");
         }
+    });
+    
+
+  
+    /*function showPosition(position) {
+        var lat = position.coords.latitude; 
+        var lon = position.coords.longitude; 
+  
+        document.getElementById("location").innerHTML = "Breite: " + lat + "<br> Länge: " + lon;
+      }*/
+    document.getElementById("getLocationButton").addEventListener("click", function(){
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+          } else {
+            document.getElementById("location").innerHTML = "Geolocation wird von diesem Browser nicht unterstützt.";
+          }
+
     });
 });
