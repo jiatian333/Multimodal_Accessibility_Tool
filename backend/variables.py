@@ -7,12 +7,12 @@ TIMESTAMP = datetime.now(timezone.utc).isoformat()
 ENDPOINT = "https://api.opentransportdata.swiss/ojp2020"
 POI_TEMPLATE = 'templates/poi_filter.xml'
 MODE_TEMPLATE = 'templates/mode_specification.xml'
-NUM_POINTS=10
+NUM_POINTS=30
 MONO_MODE = True
 SEED = 61
 WALKING_NETWORK = True # Set to False to use OJP to calculate all walking travel times
 NETWORK_AREA = "Zurich, Zurich, Switzerland"
-WALKING_SPEED = 0.9 #m/s
+WALKING_SPEED = 4.0*1000/(60*60) # 4km/h -> m/s
 
 DATASETS = {
     "parking-facilities": {
@@ -30,4 +30,4 @@ DATA_PATH = 'data/travel_times.pkl'
 
 TIMESTAMP_FILE = "data/data_timestamps.txt"
 
-MODE='escooter_rental' # Possible: walk, cycle, self-drive-car, bicycle_rental, escooter_rental, car_sharing
+MODE='walk' # Possible: walk, cycle, self-drive-car, bicycle_rental, escooter_rental, car_sharing

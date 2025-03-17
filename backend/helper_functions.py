@@ -86,17 +86,17 @@ def find_nearest_using_walking_network(idx, x, y, G, mode):
     return min_distance, nearest_parking
     
 
-def find_valid_nearest_station(idx, destinations, mode, travel_data, G, max_distance=700):
+def find_valid_nearest_station(idx, destinations, mode, travel_data, G, max_distance=300):
     """Find the nearest valid station within the acceptable walking distance.
        Also checks if parking data already exists and uses it if available."""
     
     for dest in destinations:
         # Check if parking info is already stored
-        if mode in ['cycle', 'bicycle_rental', 'escooter_rental'] and (dest.x, dest.y) in travel_data['bike-parking']:
+        if mode in ['cycle', 'bicycle_rental', 'escooter_rental'] and dest in travel_data['bike-parking']:
             print('Retrieving stored parking information.')
             return dest, travel_data['bike-parking'][dest]['parking'], travel_data['bike-parking'][dest]['travel_time']
         
-        elif mode in ['self-drive-car', 'car_sharing'] and (dest.x, dest.y) in travel_data['car-parking']:
+        elif mode in ['self-drive-car', 'car_sharing'] and dest in travel_data['car-parking']:
             print('Retrieving stored parking information.')
             return dest, travel_data['car-parking'][dest]['parking'], travel_data['car-parking'][dest]['travel_time']
 
