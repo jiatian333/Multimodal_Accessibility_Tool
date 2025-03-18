@@ -1,29 +1,20 @@
 body {
     font-family: Arial, sans-serif;
     text-align: center;
-    margin: 20px;
-    padding: 20px;
-    background-color: #444 !important;
-    color: #fff !important;
+    margin: 10px;
+    padding: 10px;
+    background-color: #fff !important;
+    color: #444 !important;
 }
 
 #map-container {
     width: 100%;
-    height: 450px;
-    margin: 50px auto;
+    height: 500px;
+    margin: 15px auto;
     border: 5px solid #ccc;
     background-color: #444;
 }
 
-#legend-container {
-    width: 200px;S
-    padding: 10px;
-    margin: 20px auto;
-    border: 1px solid #000;
-    text-align: center;
-    background-color: #555;
-    color: #fff;
-}
 
 .leaflet-control-layers label {
     display: flex;
@@ -53,13 +44,53 @@ button:hover {
 }
 
 .col-md-4.p-3.bg-light {
-    background-color: #666 !important; 
-    color: white !important; 
+    background-color: white !important; 
+    color: #666 !important; 
     padding: 20px; 
     border-radius: 10px; 
     text-align: center; 
 }
 
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; /* Über allem */
+}
+
+.popup {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    width: 300px;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.popup button {
+    margin-top: 15px;
+    padding: 10px 15px;
+    border: none;
+    background: #007bff;
+    color: white;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.popup button:hover {
+    background: #0056b3;
+}
+
+.hidden {
+    display: none;
+}
 /*Leaflet hat intern eine Standard-CSS-Datei (leaflet.css), 
 die für das Styling der Karte und der Steuerelemente verantwortlich ist.
 Wenn du ein L.control.layers-Objekt erstellst, fügt Leaflet automatisch eine div mit der Klasse .

@@ -1,3 +1,6 @@
+function closePopup() {
+    document.getElementById("popupOverlay").classList.add("hidden");
+}
 document.addEventListener("DOMContentLoaded", function() {
     var map = L.map('map-container').setView([47.3769, 8.5417], 13);
 
@@ -53,14 +56,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
     
-
-  
-    /*function showPosition(position) {
+    function showPosition(position) {
         var lat = position.coords.latitude; 
-        var lon = position.coords.longitude; 
-  
-        document.getElementById("location").innerHTML = "Breite: " + lat + "<br> Länge: " + lon;
-      }*/
+        var lng = position.coords.longitude; 
+    
+        map.setView([lat, lng], 13);
+        marker.setLatLng([lat, lng]);
+    }
     document.getElementById("getLocationButton").addEventListener("click", function(){
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(showPosition, showError);
@@ -69,4 +71,8 @@ document.addEventListener("DOMContentLoaded", function() {
           }
 
     });
-});
+    
+    });
+    
+    
+    
