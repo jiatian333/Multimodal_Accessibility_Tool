@@ -91,6 +91,7 @@ button:hover {
 .hidden {
     display: none;
 }
+
 /*Leaflet hat intern eine Standard-CSS-Datei (leaflet.css), 
 die für das Styling der Karte und der Steuerelemente verantwortlich ist.
 Wenn du ein L.control.layers-Objekt erstellst, fügt Leaflet automatisch eine div mit der Klasse .
