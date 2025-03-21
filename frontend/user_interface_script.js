@@ -2,9 +2,10 @@ function closePopup() {
     document.getElementById("popupOverlay").classList.add("hidden");
 }
 document.addEventListener("DOMContentLoaded", function() {
-    var map = L.map('map-container').setView([47.3769, 8.5417], 13);
+    var map = L.map('map-container', {
+        crs: L.CRS.EPSG3857
+    }).setView([47.3769, 8.5417], 13);
 
-    // Basis-Layer hinzufügen
     var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
@@ -34,8 +35,24 @@ document.addEventListener("DOMContentLoaded", function() {
     
     north.addTo(map);
     
-    var getLocationMarker = L.marker([47.3769, 8.5417]).addTo(map);
-    var gotoLocationMarker = L.marker([47.3769, 8.5417]).addTo(map);
+    var getLocationMarker = L.marker([47.3769, 8.5417]);
+    var gotoLocationMarker = L.marker([47.3769, 8.5417]);
+
+    var crsControl = L.control({ position: 'bottomright' });
+
+    crsControl.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'leaflet-control-coords');
+        div.innerHTML = "<strong>Reference system:</strong> EPSG:3857 (WGS84)";
+        div.style.background = "white";
+        div.style.padding = "5px";
+        div.style.borderRadius = "5px";
+        div.style.fontSize = "12px";
+        div.style.boxShadow = "0px 0px 5px rgba(0,0,0,0.3)";
+        return div;
+    };
+
+    crsControl.addTo(map);
+
 
     var line = L.polyline([gotoLocationMarker.getLatLng(), getLocationMarker.getLatLng()], {color: 'rgba(255, 99, 71, 0.5)'}).addTo(map);
     // Layers-Control mit einem Basis-Layer hinzufügen
@@ -49,8 +66,29 @@ document.addEventListener("DOMContentLoaded", function() {
     layersControl.addOverlay(osmLayer, "Car");
     layersControl.addOverlay(osmLayer, "Bike");
     layersControl.addOverlay(osmLayer, "Walk");*/
+
+
+    var markerUser; 
+    var clickedLatLng; 
+
+
+    map.on('click', function(e) {
+        clickedLatLng = e.latlng;
+
+        if (markerUser) {
+            map.removeLayer(markerUser);
+        }
+
+        markerUser = L.marker(clickedLatLng).addTo(map)
+            .bindPopup("Your current position:<br>" + clickedLatLng.lat.toFixed(5) + ", " + clickedLatLng.lng.toFixed(5))
+            .openPopup();
+    });
+
+
+
+    
     const layersControl = new L.control.layers({
-        "Basiskarte": osmLayer  // Basiskarte korrekt hier definieren
+        "Basiskarte": osmLayer 
     }, {
         "Car": osmLayer,
         "Bike": osmLayer,
@@ -80,8 +118,11 @@ document.addEventListener("DOMContentLoaded", function() {
             gotoLocationMarker.setLatLng([lat, lng]);
             line.setLatLngs([gotoLocationMarker.getLatLng(), getLocationMarker.getLatLng()]);
         } else {
-            alert("Bitte gültige Koordinaten eingeben!");
+            alert("please enter right lon/lat!");
         }
+        
+        gotoLocationMarker.addTo(map)
+
     });
     
     function showPosition(position) {
@@ -90,6 +131,7 @@ document.addEventListener("DOMContentLoaded", function() {
     
         map.setView([lat, lng], 13);
         getLocationMarker.setLatLng([lat, lng]);
+        getLocationMarker.addTo(map)
         line.setLatLngs([gotoLocationMarker.getLatLng(), getLocationMarker.getLatLng()]);
     }
 
@@ -97,7 +139,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(showPosition, showError);
           } else {
-            document.getElementById("location").innerHTML = "Geolocation wird von diesem Browser nicht unterstützt.";
+            document.getElementById("location").innerHTML = "not possible to get geoloc.";
           }
 
 
@@ -119,7 +161,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 break;
         }
     }
-    /*fetch('http://127.0.0.1:5000/data/walk_isochrones_cube.geojson', {
+    fetch('http://127.0.0.1:5000/data/walk_isochrones_cube.geojson', {
         method: "GET",
         headers: {
           "Access-Control-Allow-Origin": "*"
@@ -127,18 +169,12 @@ document.addEventListener("DOMContentLoaded", function() {
       })
       .then(response => response.json())
       .then(data => {
-        // Leaflet Karte initialisieren
-        var map = L.map('map-container').setView([47.3769, 8.5417], 13);
-      
-        // Basiskarte hinzufügen
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+
       
         // GeoJSON-Daten zur Karte hinzufügen
         L.geoJSON(data).addTo(map);
       })
-      .catch(error => console.log('Fehler beim Laden des GeoJSON:', error));*/
+      .catch(error => console.log('Fehler beim Laden des GeoJSON:', error));
     });
     
     
