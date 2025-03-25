@@ -62,8 +62,4 @@ def send_location_request(xml_request):
                'Content-Type': 'application/xml; charset=utf-8'}
     response = requests.post(ENDPOINT, data=xml_request, headers=headers)
     
-    if response.status_code == 200:
-        return response.text
-    else:
-        print(f"Error: Received status code {response.status_code}")
-        return None
+    return response

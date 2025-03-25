@@ -3,6 +3,7 @@ import re
 
 def check_and_decode_trip_response(response_xml):
     response_text = response_xml.content.decode('utf-8')
+    
     check = f'{str(response_xml.status_code)} {str(response_xml.reason)}'
     if response_xml.status_code != 200:
         check += ' / data error!'
@@ -60,7 +61,7 @@ def decode_duration(duration):
     total_minutes = hours * 60 + minutes + seconds / 60
     return total_minutes
 
-def parse_location_response(response_xml):
+def parse_location_response(response_xml, restriction_type):
     """
     Parses the OJP response and extracts nearest POI coordinates along with probability.
     """
@@ -89,6 +90,16 @@ def parse_location_response(response_xml):
         # Extract probability
         probability = location.find(".//ojp:Probability", namespaces)
         poi_info['probability'] = float(probability.text) if probability is not None else None
+        
+        # If restriction_type is 'stop', extract modes for this specific location
+        if restriction_type == 'stop':
+            modes = []
+            for mode in location.findall(".//ojp:Mode/ojp:PtMode", namespaces):  # Only within this location
+                if mode.text:
+                    modes.append(mode.text.strip())
+            poi_info['modes'] = modes 
+        else:
+            poi_info['modes'] = None
 
         poi_list.append(poi_info)
 

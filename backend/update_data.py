@@ -2,8 +2,75 @@ from variables import *
 
 import requests
 import os
+import json
 from bs4 import BeautifulSoup
 from datetime import datetime
+
+
+def filter_and_combine_json_files(dataset_keys, output_file, exclude_name=None, include_art=None):
+    """Combines multiple JSON files into one, with optional filtering based on name or art."""
+    if os.path.exists(output_file):
+        print(f"Output file '{output_file}' already exists. No need to recreate")
+        return
+    
+    combined_data = {
+        "type": "FeatureCollection",
+        "features": []
+    }
+    
+    seen_coordinates = set()
+
+    # Combine datasets from DATASETS (dynamic)
+    for dataset_key in dataset_keys:
+        # Check if dataset is in DATASETS or DATASETS_STATIC
+        dataset_info = DATASETS.get(dataset_key) or DATASETS_STATIC.get(dataset_key)
+
+        if not dataset_info:
+            print(f"❌ Dataset with key '{dataset_key}' not found.")
+            continue  # Skip this dataset if it's not found
+
+        # Get the JSON file path
+        file_path = dataset_info["json_file"]
+
+        # Load and process the dataset
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+                for feature in data["features"]:
+                    
+                    # **Exclude 'motos' from bike parking names**
+                    if dataset_key == 'bike-parking' and "properties" in feature and "moto" in (feature["properties"].get("name", "").lower()):
+                        continue
+                    
+                    # Filter out based on 'name' attribute if exclude_name is provided
+                    if exclude_name and dataset_key == 'zurich-bicycles-parking' and "properties" in feature and feature["properties"].get("name") == exclude_name:
+                        continue  # Skip this feature
+
+                    # Filter out based on 'art' attribute if include_art is provided
+                    if include_art and dataset_key == 'zurich-street-parking' and "properties" in feature and feature["properties"].get("art") not in include_art:
+                        continue  # Skip this feature
+
+                    # Add only the necessary data (coordinates and geometry)
+                    if "geometry" in feature:
+                        coords = tuple(feature["geometry"]["coordinates"])  # Convert coordinates to tuple (hashable)
+
+                        # Check for duplicates by coordinates
+                        if coords in seen_coordinates:
+                            continue  # Skip if already seen
+                        else:
+                            seen_coordinates.add(coords)
+                            combined_data["features"].append(feature)
+
+        except FileNotFoundError:
+            print(f"❌ File not found: {file_path}")
+            continue  # Skip this dataset if the file doesn't exist
+
+    # Save the combined data into a new JSON file
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(combined_data, f, ensure_ascii=False, indent=4)
+
+    print(f"✅ Combined and filtered JSON data saved to {output_file}")
 
 def get_modified_date(webpage_url):
     """

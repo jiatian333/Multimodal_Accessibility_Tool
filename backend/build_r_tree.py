@@ -1,25 +1,28 @@
 from variables import *
 
 import json
-import os
 
 def build_rtree(idx):
-    """Loads JSON files and indexes point coordinates in dataset-specific R-trees."""
+    """Loads the combined JSON data and indexes point coordinates in dataset-specific R-trees."""
     rtree_indices = {}
+    
+    combined_data = {
+        "bike-parking": json.load(open("data/total_bike_parking.json")),
+        "parking-facilities": json.load(open("data/total_car_parking.json"))
+    }
 
-    for dataset_name, values in DATASETS.items():
-        file_path = values['json_file']
-        if not os.path.exists(file_path):
-            print(f"Warning: Data file not found {file_path}. Skipping...")
+    # For each dataset in the combined data
+    for dataset_name, data in combined_data.items():
+
+        if not data.get('features'):
+            print(f"Warning: No features found in {dataset_name}. Skipping...")
             continue
 
-        # Load JSON data
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
+        # Insert each feature into the R-tree index
         for i, feature in enumerate(data["features"]):
             coords = feature["geometry"]["coordinates"]  # [longitude, latitude]
-            idx.insert(i, (coords[0], coords[1], coords[0], coords[1]))
+            if len(coords) == 2:  # Ensure valid coordinates
+                idx.insert(i, (coords[0], coords[1], coords[0], coords[1]))  # Bounding box with identical min and max for point
 
         rtree_indices[dataset_name] = idx
 
