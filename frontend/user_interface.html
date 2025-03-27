@@ -15,67 +15,86 @@
       crossorigin=""
     />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
     <script
       src="https://unpkg.com/leaflet-html-legend@0.3.5/dist/L.Control.HtmlLegend.js"
       integrity="sha384-bepXoxz70u/4nngRC3jRREvbcjmykWxIEMm0A8IK1w20B1WpQtdzqKxME1I1RykK"
       crossorigin="anonymous"
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 </head>
 <body>
-  <div id="popupOverlay" class="popup-overlay">
-    <div class="popup">
-        <p>Welcome to our visualisation of multimodal last mile connectivity visualitions. Please enter the destination you would like to arrive.
-          The application will ask for your promission to acess to your current location. The isochrones of different transport modes will visualize 
-          the same distance in all directions of the same time one is able to reach from your start position.
-        </p>
-        <button onclick="closePopup()">Got it!</button>
+  <div id="intro" class="text-center p-0">
+    <h1>Welcome to 15-min city</h1>
+    <p class="mt-3">Sie haben zwei Optionen zur Auswahl:</p>
+    <p>
+      Entweder können Sie die <strong>statische Isochronenkarte</strong> für das Stadtgebiet Zürich anzeigen, die Ihnen feste Erreichbarkeitszonen auf Basis von Zeit und Verkehrsmittel visualisiert, oder Sie nutzen die <strong>dynamische Version</strong>, bei der Sie interaktiv eine Zielposition wählen und sich die entsprechende Erreichbarkeit in Echtzeit berechnen lassen.
+    </p>
+    <div class="mt-4">
+      <button onclick="switchPage('seite1')">Dynamic Isochrones</button>
+      <button onclick="switchPage('seite2')">Static Isochrones</button>
     </div>
   </div>
-    <!--
-    <h1>Isochronous map visualization for 15min city</h1>
-    
-    <div id="map-container"></div>
-    <p>This is an isochrone map for a specific mode of transport. Isochrones represent areas that can be reached within the same time from a given point of interest (POI)</p>
-    <div id="legend-container">
-        <h3>Hier kommt nachher die Legende hinzu</h3>
-    </div> -->
+
+
+  <!-- DYNAMIC PAGE -->
+  <div id="seite1" class="seite">
     <div class="container-fluid">
       <div class="row">
-        <div class="col-12 text-center p-3">
-            <h1>Isochronous map visualization for 15min city</h1>
-        </div>
-    </div>
-      <div class="row">
-          <div class="col-md-2 p-3 bg-light">
-            
-              <h4>Please enter destination coordinates</h4>
-              <label for="lat">latitude (Lat):</label>
-              <input type="text" id="lat" class="form-control" placeholder="z. B. 52.5200">
-              
-              <label for="lng" class="mt-2">longitude (Lng):</label>
-              <input type="text" id="lng" class="form-control" placeholder="z. B. 13.4050">
-              
-              <button id="goToLocation" class="btn btn-primary mt-3 w-100">Destination Position</button>
-
-              <div class="mt-3">
-                <button id= getLocationButton class="btn btn-primary w-100">Get Location</button>
-              </div>
-              
-          </div>
-
-          <div class="col-md-10 p-3">
-              <div id="map-container"></div>
-          </div>
-          
-          <div id="footer" style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); color: black; font-size: 14px; text-align: center;">
-            Spring Semester 2025 Project "Last-Mile Connectivity in 15-Minute Cities" <br />
-            Nick Teutschmann, Jiaan Tian
-          </div>
       </div>
+      <div class="row">
+        <div class="col-md-2 p-3 bg-light">
+          <h4>Destination Coordinates</h4>
+          <label for="lat">Latitude:</label>
+          <input type="text" id="lat" class="form-control" placeholder="e.g. 52.5200">
+
+          <label for="lng" class="mt-2">Longitude:</label>
+          <input type="text" id="lng" class="form-control" placeholder="e.g. 13.4050">
+
+          <button id="goToLocation" class="btn btn-primary mt-3 w-100">Go to Position</button>
+
+          <div class="mt-3">
+            <button id="getLocationButton" class="btn btn-primary w-100">Get My Location</button>
+          </div>
+        </div>
+        <div class="col-md-10 p-0">
+          <div id="map-dynamic"></div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- STATIC PAGE -->
+  <div id="seite2" class="seite">
+    <div class="container-fluid">
+      <div class="row">
+      </div>
+      <div class="row">
+        <div class="col-md-2 p-3 bg-light">
+          <h5>Erklärung</h5>
+          <p id="erklaerungsfeld" style="min-height: 200px;"></p>
+        </div>
+        <div class="col-md-10 p-0">
+          <div id="map-static"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchPage(pageId) {
+      document.querySelectorAll('.seite').forEach(div => div.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+
+      setTimeout(() => {
+        if (pageId === 'seite1' && typeof mapDynamic !== 'undefined') {
+          mapDynamic.invalidateSize();
+        } else if (pageId === 'seite2' && typeof mapStatic !== 'undefined') {
+          mapStatic.invalidateSize();
+        }
+      }, 100);
+    }
+  </script>
 </body>
 </html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to 15-min city</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 60px;
+      background-color: #fff;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+
+    #map {
+      height: 500px;
+      width: 100%;
+      border: 4px solid #ccc;
+      border-radius: 10px;
+    }
+
+    .sidebar {
+      background-color: #f9f9f9;
+      height: 500px;
+      border-radius: 10px;
+      padding: 15px;
+    }
+
+    .sidebar input, .sidebar button {
+      width: 100%;
+      padding: 8px;
+      margin-top: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    .sidebar button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .sidebar button:hover {
+      background-color: #0056b3;
+    }
+
+    .description {
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+    }
+
+    .reference {
+      font-size: 0.8rem;
+      color: #777;
+      margin-top: 60px;
+      text-align: center;
+      padding-top: 10px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Welcome to 15-min city</h1>
+
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-3 sidebar">
+        <div class="description">
+          <p>
+            Here you can see a static isochrone map for a selected mode of transport. The map visualizes travel times from different locations to their nearest station, helping planners easily identify areas where additional stations might be needed.
+          </p>
+          <p>
+            If you wish to check the travel time from a specific station to surrounding locations, please enter the station name below.
+          </p>
+        </div>
+
+        <input type="text" id="stationInput" placeholder="please enter station name">
+        <button id="showIsochroneBtn">show station isochrone</button>
+      </div>
+      <div class="col-md-9">
+        <div id="map"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="reference">
+    15 min project FS 2025 &mdash; Nick Teutschmann, Jiaan Tian
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([47.3769, 8.5417], 13);
+
+    const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap contributors © CARTO'
+    }).addTo(map);
+
+    // Nordpfeil
+    const north = L.control({ position: "topright" });
+    north.onAdd = function(map) {
+      const div = L.DomUtil.create("div", "info legend");
+      div.innerHTML = `
+        <div style="width: 60px; height: 60px; border: 5px solid black; border-radius: 50%; position: relative; background-color: #fff; text-align: center; font-size: 20px;">
+          <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: bold; color: black;">N</div>
+          <div style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 30px solid black;"></div>
+          <div style="position: absolute; top: 25px; left: 50%; transform: translateX(-50%); width: 8px; height: 20px; background-color: black;"></div>
+        </div>
+      `;
+      return div;
+    };
+    north.addTo(map);
+
+    L.control.scale().addTo(map);
+
+    // LayerControl
+    const layersControl = L.control.layers({
+      "CartoDB Positron": cartoLayer
+    }, {
+      "Car": cartoLayer,
+      "Bike": cartoLayer,
+      "Walk": cartoLayer
+    }, { collapsed: false }).addTo(map);
+
+    // Infofeld zu CRS (Koordinatensystem)
+    const crsControl = L.control({ position: 'bottomright' });
+    crsControl.onAdd = function (map) {
+      const div = L.DomUtil.create('div', 'leaflet-control-coords');
+      div.innerHTML = "<strong>Reference system:</strong> EPSG:3857 (WGS84)";
+      div.style.background = "white";
+      div.style.padding = "5px";
+      div.style.borderRadius = "5px";
+      div.style.fontSize = "12px";
+      div.style.boxShadow = "0px 0px 5px rgba(0,0,0,0.3)";
+      return div;
+    };
+    crsControl.addTo(map);
+
+  </script>
+</body>
+</html>
