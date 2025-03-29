@@ -108,8 +108,8 @@
 
     .isochrone-legend {
       position: absolute;
-      bottom: 20px;
-      right: 20px;
+      bottom: 55px;
+      left: 5px;
       background: white;
       padding: 10px;
       border-radius: 8px;
@@ -132,6 +132,16 @@
       border-radius: 3px;
       margin-right: 8px;
     }
+    
+    .pfeil {
+    position: absolute;
+    bottom: 30px;
+    right: 10px;
+    width: 50px;
+    height: auto;
+    z-index: 1000;
+    pointer-events: none;
+  }
   </style>
 </head>
 <body>
@@ -153,7 +163,7 @@
       <div class="col-md-3 sidebar">
         <div class="description">
           <p>
-            The map visualizes travel times from various locations to their nearest public transport station, helping planners easily identify areas where additional stations might be needed.
+            The map visualizes travel times from various locations to their nearest public transport station - so called isochrones, helping planners easily identify areas where additional stations might be needed.
           </p>
           <p>
             If you wish to check the isochrone map around a specific station, please enter the station name below.
@@ -164,11 +174,13 @@
         <button id="showIsochroneBtn">show station isochrone</button>
       </div>
       <div class="col-md-9">
-        <div id="map" style="position: relative;"></div>
-        <div class="isochrone-legend">
-          <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: red;"></div>10–15 min</div>
-          <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: orange;"></div>5–10 min</div>
-          <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: green;"></div>0–5 min</div>
+        <div id="map" style="position: relative;">
+          <img src="north-arrow-2.svg" alt="Nordpfeil", class="pfeil">
+          <div class="isochrone-legend">
+            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: red;"></div>10–15 min</div>
+            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: orange;"></div>5–10 min</div>
+            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: green;"></div>0–5 min</div>
+          </div>
         </div>
       </div>
     </div>
@@ -193,7 +205,7 @@
     L.control.scale().addTo(map);
 
     const layersControl = L.control.layers({
-      "CartoDB Positron": cartoLayer
+      "Basiskarte": cartoLayer
     }, {
       "Car": cartoLayer,
       "Bike": cartoLayer,
