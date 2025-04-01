@@ -1,8 +1,9 @@
 from variables import *
-from create_send_requests import create_trip_request, send_trip_request, create_location_request, send_location_request
+from create_send_requests import create_trip_request, send_request, create_location_request
 from parse_response import check_and_decode_trip_response, parse_trip_response, decode_duration, parse_location_response
 from build_r_tree import find_nearest
-from save_and_load_data import get_stored_parking_info
+from save_and_load_data import get_stored_parking_info, get_stored_closest_rental
+from parameter_selection import select_parameters, params_distance_calculation, r_tree_mode_map
 import time
 from shapely.geometry import Point
 import osmnx as ox
@@ -13,37 +14,131 @@ class RateLimitExceededError(Exception):
     pass
 
 def sleep():
-    time.sleep(0.2) # 0.2 seconds
-    
-def process_trip_request(random_point, destination, mode_xml, arr=ARR, num_results=1, include_stops=False, 
-                         include_track_sect=False, include_leg_proj=False, include_turn_desc=False, real_time=True):
-    
-    request = create_trip_request(TIMESTAMP, random_point, destination, arr=ARR, mode_xml=mode_xml, 
-                            num_results=num_results, include_stops=include_stops, include_track_sect=include_track_sect, 
-                            include_leg_proj=include_leg_proj, include_turn_desc=include_turn_desc, real_time=real_time)
-    response = send_trip_request(request, ENDPOINT)
-    sleep()
-    response, check = check_and_decode_trip_response(response)
-    return response, check
+    time.sleep(0.2)  # 0.2 seconds
 
-def process_location_request(random_point, radius, restriction_type, poi_filter, polygon, num_results=1, include_pt_modes=True):
-    request = create_location_request(TIMESTAMP, random_point, num_results=num_results, include_pt_modes=include_pt_modes, radius=radius, restriction_type=restriction_type, poi_filter=poi_filter)
-    response = send_location_request(request)
+def process_trip_request(random_point, destination, mode_xml, arr=ARR, num_results=1, **kwargs):
+    request = create_trip_request(TIMESTAMP, random_point, destination, arr=arr, mode_xml=mode_xml, num_results=num_results, **kwargs)
+    response = send_request(request, ENDPOINT)
     sleep()
-    if response.status_code==429:
+    return check_and_decode_trip_response(response)
+
+def filter_destinations(destinations, public_modes, rtree_indices, G, travel_data, mode):
+    """
+    Filters rental destinations to ensure they are within max_distance (meters).
+    Uses OSMnx walking network if available; otherwise, falls back to Euclidean distance.
+    """
+    
+    mode_priority, base_max_distance, boost_factor, priority_boost_factor, weight_factor_base = params_distance_calculation(mode)
+    best_destination, best_nearest, best_weighted_distance = None, None, float('inf')
+
+    for dest, modes in zip(destinations, public_modes):
+        
+        nearest, travel_time_walk = get_stored_closest_rental(travel_data, mode, dest, point_isochrones=False)
+        if nearest:
+            return dest, nearest, travel_time_walk
+        
+        if USE_RTREE_SEARCH:
+            max_distance = base_max_distance * 2
+            nearest = find_nearest(rtree_indices, dest.x, dest.y, mode, num_results=1)
+            if not nearest:
+                continue
+            nearest = Point(nearest[0].bbox[:2])
+            
+        min_distance = nx.shortest_path_length(G, ox.distance.nearest_nodes(G, dest.x, dest.y), ox.distance.nearest_nodes(G, nearest.x, nearest.y), weight='length')
+        weighted_distance = distance_weights(modes, min_distance, mode_priority, max_distance, boost_factor, priority_boost_factor, weight_factor_base)
+        if not weighted_distance:
+            continue
+            
+        if weighted_distance < best_weighted_distance:
+            best_weighted_distance = weighted_distance
+            best_destination, best_nearest = dest, nearest
+        
+        if best_weighted_distance == 0:
+            break
+        
+    if not USE_RTREE_SEARCH or not best_destination:
+        radius, restriction_type, poi_filter = select_parameters(rental=True)
+        for dest, modes in zip(destinations, public_modes):
+            max_distance = base_max_distance * 4  # Less strict maximum distance requirements.
+            
+            nearest, _ = location_ojp(dest, 1, False, radius, restriction_type, poi_filter)
+            if not nearest:
+                continue
+            
+            nearest = nearest[0]
+            
+            min_distance = nx.shortest_path_length(G, ox.distance.nearest_nodes(G, dest.x, dest.y), ox.distance.nearest_nodes(G, nearest.x, nearest.y), weight='length')
+            weighted_distance = distance_weights(modes, min_distance, mode_priority, max_distance, boost_factor, priority_boost_factor, weight_factor_base)
+            if not weighted_distance:
+                continue
+                
+            if weighted_distance < best_weighted_distance:
+                best_weighted_distance = weighted_distance
+                best_destination, best_nearest = dest, nearest
+            
+            if best_weighted_distance == 0:
+                break
+        
+    return (best_destination, best_nearest, None) if best_destination else (None, None, None)
+
+def location_ojp(random_point, num_results, include_pt_modes, radius, restriction_type, poi_filter):
+    request = create_location_request(TIMESTAMP, random_point, num_results=num_results, include_pt_modes=include_pt_modes, radius=radius, restriction_type=restriction_type, poi_filter=poi_filter)
+    response = send_request(request, ENDPOINT)
+    sleep()
+    
+    if response.status_code == 429:
         raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
-    elif response.status_code!=200:
+    if response.status_code != 200:
         print('No valid response from OJP regarding the location information request. Skipping!')
         return None, None
-        
+    
     poi_list = parse_location_response(response.text, restriction_type)
-    destination = [Point(i['longitude'], i['latitude']) for i in poi_list]
-    modes = [i['modes'] for i in poi_list]
+    destinations, modes = zip(*[(Point(i['longitude'], i['latitude']), i['modes']) for i in poi_list]) if poi_list else ([], [])
+    return destinations, modes
+
+def polygon_filter(polygon, modes, destinations):
+    filtered = [(dest, modes[i]) for i, dest in enumerate(destinations) if polygon.contains(dest)]
+
+    if filtered:
+        filtered_destinations, filtered_modes = zip(*filtered)
+    else:
+        filtered_destinations, filtered_modes = [], []
+        
+    return filtered_destinations, filtered_modes
+
+def process_location_request(random_point, radius, restriction_type, poi_filter, polygon, rtree_indices, mode, G, travel_data, num_results=1, rental=False, include_pt_modes=True, public_transport_modes=None):
+    destinations, modes, nearest = [], [], None
     
-    destination = [dest for dest in destination if polygon.contains(dest)]
-    modes = [modes[i] for i in range(len(destination)) if polygon.contains(destination[i])]
+    if USE_RTREE_SEARCH:
+        search_type = 'public-transport' if restriction_type == 'stop' else mode
+        
+        nearest_stations = find_nearest(rtree_indices, random_point.x, random_point.y, search_type, num_results=num_results)
+        destinations = [Point(obj.bbox[:2]) for obj in nearest_stations]
+        
+        for obj in nearest_stations:
+            matching_modes = public_transport_modes[
+                (public_transport_modes['longitude'] == obj.bbox[0]) & 
+                (public_transport_modes['latitude'] == obj.bbox[1])
+            ]
+
+            if not matching_modes.empty:
+                modes.append(matching_modes['transport_modes'].values[0].split('|'))
+            else:
+                modes.append([])
     
-    return destination, modes
+    destinations, modes = polygon_filter(polygon, modes, destinations)
+        
+    if not destinations:
+        destinations, modes = location_ojp(random_point, num_results, include_pt_modes, radius, restriction_type, poi_filter)
+        if not destinations:
+            return None, None, None
+        
+    destinations, modes = polygon_filter(polygon, modes, destinations)
+    
+    if restriction_type == 'stop' and rental:
+        destinations, nearest, modes = filter_destinations(destinations, modes, rtree_indices, G, travel_data, mode)
+    
+    return destinations, modes, nearest
 
 def estimated_walking_time(point1: Point, point2: Point, G) -> int:
     """
@@ -57,10 +152,10 @@ def estimated_walking_time(point1: Point, point2: Point, G) -> int:
     Returns:
     int: Walking time in whole minutes.
     """
-    orig = ox.distance.nearest_nodes(G, point1.x, point1.y)
-    dest = ox.distance.nearest_nodes(G, point2.x, point2.y)
-    length = nx.shortest_path_length(G, orig, dest, weight='length')  # Distance in meters
-    return math.ceil(length / WALKING_SPEED / 60)  # Convert seconds to whole minutes, rounding up to prevent too optimistic results
+    
+    orig, dest = ox.distance.nearest_nodes(G, point1.x, point1.y), ox.distance.nearest_nodes(G, point2.x, point2.y)
+    length = nx.shortest_path_length(G, orig, dest, weight='length')
+    return math.ceil(length / WALKING_SPEED / 60)
 
 def find_nearest_using_walking_network(idx, x, y, G, mode):
     """
@@ -77,134 +172,90 @@ def find_nearest_using_walking_network(idx, x, y, G, mode):
     """
     
     parking_facilities = find_nearest(idx, x, y, mode, num_results=2)
-    min_distance = float('inf')
-    nearest_parking = None
-    
     orig_node = ox.distance.nearest_nodes(G, x, y)
     
-    for parking_facility in parking_facilities:
-        parking_x, parking_y = parking_facility.bbox[0], parking_facility.bbox[1]
-        
-        # Get the nearest node in the network for the parking facility
+    nearest_parking, min_distance = None, float('inf')
+    for parking in parking_facilities:
+        parking_x, parking_y = parking.bbox[:2]
         parking_node = ox.distance.nearest_nodes(G, parking_x, parking_y)
-        
         try:
             distance = nx.shortest_path_length(G, orig_node, parking_node, weight='length')
-            
             if distance < min_distance:
-                min_distance = distance
-                nearest_parking = Point(parking_x, parking_y)
-            if min_distance==0:
+                min_distance, nearest_parking = distance, Point(parking_x, parking_y)
+            if min_distance == 0:
                 break
         except nx.NetworkXNoPath:
-            continue  # Skip if no path exists
-    
+            continue
     return min_distance, nearest_parking
+
+def process_and_get_travel_time(start, end, mode_xml, mode, G):
+    """Process trip request and return travel time if successful."""
+    
+    if WALKING_NETWORK and mode == 'walk':
+        print('Using network instead of OJP to determine walking travel time')
+        return estimated_walking_time(start, end, G)
+    
+    response, check = process_trip_request(start, end, mode_xml, arr=ARR, num_results=1)
+    if "429" in check:
+        raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
+    if any(err in check for err in ["/ data error!", "/ no valid response!", "/ no trip found!"]):
+        print(f'No valid response from OJP. Skipping! Check resulted in: {check}')
+        return None
+    
+    journeys = parse_trip_response(response)
+    duration = decode_duration([journey['duration'] for journey in journeys] if journeys else [])
+    if not duration:
+        print('No valid travel time from OJP. Skipping!')
+        return None
+    
+    return duration
+
+def distance_weights(transport_modes, min_distance, mode_priority, base_max_distance, boost_factor, priority_boost_factor, weight_factor_base):
+    
+    mode_scores = [mode_priority.get(m, 0) for m in transport_modes]
+    total_priority_score = sum(mode_scores)
+    highest_priority = max(mode_scores, default=0)
+    
+    count_boost = boost_factor * (len(transport_modes) - 1)
+    priority_boost = priority_boost_factor * highest_priority if highest_priority > 1 else 0
+    adjusted_max_distance = base_max_distance * (1 + count_boost + priority_boost) if USE_MODE_WEIGHTING else base_max_distance
+    
+    if min_distance >= adjusted_max_distance:
+        return None
+    
+    weight_factor = 1 + weight_factor_base * (total_priority_score + 0.5 * (len(transport_modes) - 1)) if USE_MODE_WEIGHTING else 1
+    weighted_distance = min_distance * weight_factor
+    return weighted_distance
 
 def find_valid_nearest_station(idx, destinations, mode, travel_data, G, public_transport_modes):
     """Find the nearest valid station within the acceptable walking distance.
        Applies a weight to destinations with more transport modes if enabled.
        Also slightly increases max walking distance for better-connected stations.
-       Also checks if parking data already exists and uses it if available.
+       Checks if parking data already exists and uses it if available.
     """
     
-    # Mode priority mapping (higher value = higher priority)
-    mode_priority = {
-        'rail': 2,
-        'tram': 1,
-        'bus': 0,
-        'suburbanRail': 1,
-        'urbanRail': 1,
-        'metro': 1,
-        'underground': 1,
-        'coach': 0,
-        'water': 1,
-        'air': 2,
-        'telecabin': 0,
-        'funicular': 0,
-        'taxi': 1,
-        'selfDrive': 1,
-        'unknown': 0
-    }
+    mode_priority, base_max_distance, boost_factor, priority_boost_factor, weight_factor_base = params_distance_calculation(mode)
     
-    best_destination = None
-    best_nearest = None
-    best_weighted_distance = float('inf')
-
-    for i, dest in enumerate(destinations):
-        
+    best_destination, best_nearest, best_weighted_distance = None, None, float('inf')
+    
+    for dest, modes in zip(destinations, public_transport_modes):
         nearest, travel_time_walk = get_stored_parking_info(travel_data, dest, mode, point_isochrones=False)
         if nearest:
             return dest, nearest, travel_time_walk
-
-        # Find nearest station using the walking network
+        
         min_distance, nearest = find_nearest_using_walking_network(idx, dest.x, dest.y, G, mode)
         if not nearest:
             continue
-
-        # Calculate the total priority score for this destination
-        mode_scores = [mode_priority[m] for m in public_transport_modes[i] if m in mode_priority]
-        total_priority_score = sum(mode_scores) if mode_scores else 0
-
-        # Base max distance per mode
-        base_max_distance = 300 if mode in ['car_sharing', 'self-drive-car'] else 200
-
-        # Calculate the boost based on the number of modes (count boost)
-        boost_factor = 0.05  # 5% extra per additional mode
-        count_boost = boost_factor * (len(public_transport_modes[i]) - 1)
-
-        # Determine the highest priority among available modes
-        highest_priority = max([mode_priority.get(m, 0) for m in public_transport_modes[i]] or [0])
-
-        # Only add a priority boost if the highest priority is above 1 (i.e., not just bus)
-        priority_boost = 0.1 * highest_priority
-
-        # Combine both boosts to adjust the maximum walking distance
-        adjusted_max_distance = base_max_distance * (1 + count_boost + priority_boost) if USE_MODE_WEIGHTING else base_max_distance
-
-        if min_distance >= adjusted_max_distance:
-            continue  # Skip if walking distance is too long
-
-        # Apply weighting based on priority score (higher priority modes should shorten the distance more)
-        # Reduced weight factor effect (smaller adjustments)
-        weight_factor = 1 + 0.05 * (total_priority_score + 0.5 * (len(public_transport_modes[i]) - 1)) if USE_MODE_WEIGHTING else 1
-        weighted_distance = min_distance * weight_factor
-
-        # Choose the best station (smallest weighted distance)
+            
+        weighted_distance = distance_weights(modes, min_distance, mode_priority, base_max_distance, boost_factor, priority_boost_factor, weight_factor_base)
+        if not weighted_distance:
+            continue
+        
         if weighted_distance < best_weighted_distance:
             best_weighted_distance = weighted_distance
-            best_destination = dest
-            best_nearest = nearest
-        if best_weighted_distance==0:
+            best_destination, best_nearest = dest, nearest
+        
+        if best_weighted_distance == 0:
             break
-
-    if best_destination:
-        return best_destination, best_nearest, None  # No pre-stored walking time, must compute it
-
-    print('No valid destination found. Skipping!')
-    return None, None, None  # No valid destination found
-
-def process_and_get_travel_time(start, end, mode_xml, mode, G):
-    """Process trip request and return travel time if successful."""
-    if WALKING_NETWORK and mode == 'walk':
-        print('Using network instead of OJP to determine walking travel time')
-        travel_time = estimated_walking_time(start, end, G)
-        print(f'Estimated walking time from {start} to {end}: {travel_time} minutes')
-        return travel_time
     
-    response, check = process_trip_request(start, end, mode_xml, arr=ARR, num_results=1)
-    
-    if "429" in check:  # Check for rate-limiting error
-        raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
-    
-    if "/ data error!" in check or "/ no valid response!" in check or '/ no trip found!' in check:
-        print(f'No valid response from OJP. Skipping! Check resulted in: {check}')
-        return None  # Invalid response, return None
-    journeys = parse_trip_response(response)
-    duration = [journey['duration'] for journey in journeys]
-    if not duration:
-        print('No valid travel time from OJP. Skipping!')
-        return None
-    duration = decode_duration(duration)
-    print(f'Travel time from {start} to {end} using {mode} is {duration} minutes!')
-    return duration
+    return (best_destination, best_nearest, None) if best_destination else (None, None, None)

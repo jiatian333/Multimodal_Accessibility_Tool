@@ -19,8 +19,8 @@
                     </ojp:InitialInput>
                 <ojp:Restrictions>
                     <ojp:Type>${restriction_type}</ojp:Type>
-                    <ojp:NumberOfResults>${number_of_results}</ojp:NumberOfResults>
-                    <ojp:IncludePtModes>${include_pt_modes}</ojp:IncludePtModes>${poi_filter}
+                    <NumberOfResults>${number_of_results}</NumberOfResults>
+                    <IncludePtModes>${include_pt_modes}</IncludePtModes>${poi_filter}
                 </ojp:Restrictions>
             </ojp:OJPLocationInformationRequest>
         </ServiceRequest>

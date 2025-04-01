@@ -8,75 +8,59 @@ from datetime import datetime
 
 
 def filter_and_combine_json_files(dataset_keys, output_file, exclude_name=None, include_art=None):
-    """Combines multiple JSON files into one, with optional filtering based on name or art."""
+    """Combines multiple JSON files into one, filtering based on name or art."""
+    
     if os.path.exists(output_file):
-        print(f"Output file '{output_file}' already exists. No need to recreate")
+        print(f"✅ Output file '{output_file}' already exists.")
         return
-    
-    combined_data = {
-        "type": "FeatureCollection",
-        "features": []
-    }
-    
+
+    combined_data = {"type": "FeatureCollection", "features": []}
     seen_coordinates = set()
 
-    # Combine datasets from DATASETS (dynamic)
     for dataset_key in dataset_keys:
-        # Check if dataset is in DATASETS or DATASETS_STATIC
         dataset_info = DATASETS.get(dataset_key) or DATASETS_STATIC.get(dataset_key)
 
         if not dataset_info:
-            print(f"❌ Dataset with key '{dataset_key}' not found.")
-            continue  # Skip this dataset if it's not found
+            print(f"❌ Dataset '{dataset_key}' not found.")
+            continue
 
-        # Get the JSON file path
         file_path = dataset_info["json_file"]
-
-        # Load and process the dataset
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-                for feature in data["features"]:
-                    
-                    # **Exclude 'motos' from bike parking names**
-                    if dataset_key == 'bike-parking' and "properties" in feature and "moto" in (feature["properties"].get("name", "").lower()):
-                        continue
-                    
-                    # Filter out based on 'name' attribute if exclude_name is provided
-                    if exclude_name and dataset_key == 'zurich-bicycles-parking' and "properties" in feature and feature["properties"].get("name") == exclude_name:
-                        continue  # Skip this feature
+            for feature in data.get("features", []):
+                properties = feature.get("properties", {})
+                coords = tuple(feature.get("geometry", {}).get("coordinates", []))
 
-                    # Filter out based on 'art' attribute if include_art is provided
-                    if include_art and dataset_key == 'zurich-street-parking' and "properties" in feature and feature["properties"].get("art") not in include_art:
-                        continue  # Skip this feature
+                # Filtering conditions
+                if (
+                    (dataset_key == 'bike-parking' and "moto" in properties.get("name", "").lower()) or
+                    (exclude_name and dataset_key == 'zurich-bicycles-parking' and properties.get("name") == exclude_name) or
+                    (include_art and dataset_key == 'zurich-street-parking' and properties.get("art") not in include_art)
+                ):
+                    continue
 
-                    # Add only the necessary data (coordinates and geometry)
-                    if "geometry" in feature:
-                        coords = tuple(feature["geometry"]["coordinates"])  # Convert coordinates to tuple (hashable)
-
-                        # Check for duplicates by coordinates
-                        if coords in seen_coordinates:
-                            continue  # Skip if already seen
-                        else:
-                            seen_coordinates.add(coords)
-                            combined_data["features"].append(feature)
+                # Avoid duplicates
+                if coords and coords not in seen_coordinates:
+                    seen_coordinates.add(coords)
+                    combined_data["features"].append(feature)
 
         except FileNotFoundError:
-            print(f"❌ File not found: {file_path}")
-            continue  # Skip this dataset if the file doesn't exist
+            print(f"❌ Missing file: {file_path}")
+            continue
 
-    # Save the combined data into a new JSON file
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(combined_data, f, ensure_ascii=False, indent=4)
 
-    print(f"✅ Combined and filtered JSON data saved to {output_file}")
+    print(f"✅ Data saved to {output_file}")
 
 def get_modified_date(webpage_url):
     """
     Scrapes the webpage to extract the 'Modified date' from the data-datetime attribute.
     Returns a datetime object.
     """
+    
     response = requests.get(webpage_url)
     response.raise_for_status()
 
@@ -105,6 +89,7 @@ def get_modified_date(webpage_url):
 
 def load_last_modified():
     """Loads the last modified timestamps from the file."""
+    
     if not os.path.exists(TIMESTAMP_FILE):
         return {}
 
@@ -123,12 +108,14 @@ def load_last_modified():
 
 def save_last_modified(timestamps):
     """Saves modified timestamps for all datasets to a file."""
+    
     with open(TIMESTAMP_FILE, "w", encoding="utf-8") as file:
         for dataset, timestamp in timestamps.items():
             file.write(f"{dataset}:{timestamp.isoformat()}\n")
 
 def fetch_parking_data(permalink_url, json_file):
     """Downloads the JSON data and saves it locally."""
+    
     response = requests.get(permalink_url)
     response.raise_for_status()
 
@@ -139,6 +126,7 @@ def fetch_parking_data(permalink_url, json_file):
 
 def check_for_updates():
     """Checks if the parking data has been updated and downloads it if necessary."""
+    
     try:
         timestamps = load_last_modified()
 

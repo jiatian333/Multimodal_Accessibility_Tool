@@ -1,128 +1,83 @@
 from variables import *
 from calculate_intersections import save_and_load_intersections
 
-import osmnx as ox
 import numpy as np
 import geopandas as gpd
-import pyproj
+from shapely.ops import unary_union
 from shapely.geometry import Point
 from scipy.spatial import KDTree
 
-def generate_adaptive_sample_points(polygon, mode=MODE):
+def generate_adaptive_sample_points(polygon, water_combined, target_crs, mode=MODE):
     np.random.seed(SEED)
+    polygon = gpd.GeoSeries(polygon, crs="EPSG:4326").to_crs(target_crs).iloc[0]
+    water_combined = gpd.GeoSeries(water_combined, crs="EPSG:4326").to_crs(target_crs).iloc[0]
 
-    # **Step 1: Get the area polygon in the correct CRS**
-    target_crs = pyproj.CRS.from_epsg(2056)
-    polygon = polygon.to_crs(target_crs).geometry.union_all()
-
-    # **Step 2: Exclude water bodies**
-    water_gdf = ox.features_from_place(NETWORK_AREA, tags={"natural": "water"}).to_crs(target_crs).geometry.union_all()
-    river_gdf = ox.features_from_place(NETWORK_AREA, tags={"waterway": True}).to_crs(target_crs).geometry.union_all()
-
-    # **Step 3: Determine transport network type**
     network_type = {
         'cycle': 'bike', 'bicycle_rental': 'bike', 'escooter_rental': 'bike',
         'self-drive-car': 'drive', 'car_sharing': 'drive'
     }.get(mode, 'walk')
 
-    # **Step 4: Load intersection densities**
     if EXTRA_POINTS > 0:
-        intersection_dict = save_and_load_intersections(network_type, target_crs, polygon, water_gdf, river_gdf, grid_size=BASE_GRID_SIZE, filename=DENSITY_DATA_PATH)
-        intersection_counts = intersection_dict[network_type][BASE_GRID_SIZE]
-
-    # **Step 5: Define the grid exactly as in intersection calculation**
+        intersection_dict = save_and_load_intersections(
+            network_type, target_crs, polygon, water_combined, BASE_GRID_SIZE, DENSITY
+        )
+        intersection_counts = np.array(intersection_dict[network_type][BASE_GRID_SIZE], dtype=float)
+    
     minx, miny, maxx, maxy = polygon.bounds
-    x_vals = np.linspace(minx, maxx, int(np.ceil((maxx - minx) / BASE_GRID_SIZE)))
-    y_vals = np.linspace(miny, maxy, int(np.ceil((maxy - miny) / BASE_GRID_SIZE)))
+    x_vals, y_vals = np.meshgrid(
+        np.linspace(minx, maxx, int(np.ceil((maxx - minx) / BASE_GRID_SIZE))),
+        np.linspace(miny, maxy, int(np.ceil((maxy - miny) / BASE_GRID_SIZE)))
+    )
+    x_vals, y_vals = x_vals.flatten(), y_vals.flatten()
+    
+    points = np.column_stack((x_vals, y_vals)) + BASE_GRID_SIZE / 2
+    random_offsets = np.random.uniform(-BASE_GRID_SIZE / 3, BASE_GRID_SIZE / 3, points.shape)
+    points += random_offsets
+    point_geoms = gpd.GeoSeries([Point(p) for p in points])
 
-    # **Exclude grids with zero intersections**
-    if EXTRA_POINTS > 0:
-        valid_indices = [i for i, count in enumerate(intersection_counts) if count > 0]
-        valid_intersections = [intersection_counts[i] for i in valid_indices]
-        log_intersection_counts = np.log(np.array(valid_intersections, dtype=float))
+    valid_mask = polygon.contains(point_geoms) & ~water_combined.intersects(point_geoms)
+    valid_points = points[valid_mask]
+    
+    if EXTRA_POINTS > 0 and intersection_counts.sum() > 0:
+        valid_indices = np.where(intersection_counts > 0)[0]
+        valid_weights = np.log(intersection_counts[valid_indices])
+        valid_weights /= valid_weights.sum()
 
-        # Normalize the log-transformed weights
-        total_weight = np.sum(log_intersection_counts)
-        if total_weight > 0:
-            valid_weights = log_intersection_counts / total_weight  # Normalize to probabilities
-        else:
-            valid_weights = np.ones(len(valid_intersections))  # If no valid weights, fallback to uniform distribution
+        extra_indices = np.random.choice(valid_indices, EXTRA_POINTS, p=valid_weights)
+        extra_offsets = np.random.uniform(-BASE_GRID_SIZE / 2, BASE_GRID_SIZE / 2, (EXTRA_POINTS, 2))
+        extra_points = np.column_stack((x_vals[extra_indices], y_vals[extra_indices])) + BASE_GRID_SIZE / 2 + extra_offsets
 
-    # **Step 6: Generate initial base grid**
-    points = []
-    for x in x_vals:
-        for y in y_vals:
-            random_offset = np.random.uniform(-BASE_GRID_SIZE / 3, BASE_GRID_SIZE / 3, size=2)
-            p = Point(x + BASE_GRID_SIZE / 2 + random_offset[0], y + BASE_GRID_SIZE / 2 + random_offset[1])
-            if polygon.intersects(p) and not water_gdf.intersects(p) and not river_gdf.intersects(p):
-                points.append(p)
-
-    # **Step 7: Generate extra adaptive points**
-    if EXTRA_POINTS > 0:
-        for _ in range(EXTRA_POINTS):
-            # Randomly sample a grid index based on the weights
-            grid_idx = np.random.choice(valid_indices, p=valid_weights)
-            grid_x = x_vals[grid_idx % len(x_vals)]
-            grid_y = y_vals[grid_idx // len(x_vals)]
-
-            # **Ensure that the grid has at least one intersection before proceeding**
-            if intersection_counts[grid_idx] > 0:
-
-                random_offset = np.random.uniform(-BASE_GRID_SIZE / 2, BASE_GRID_SIZE / 2, size=2)
-                new_point = Point(grid_x + BASE_GRID_SIZE / 2 + random_offset[0], grid_y + BASE_GRID_SIZE / 2 + random_offset[1])
-
-                if polygon.intersects(new_point) and not water_gdf.intersects(new_point) and not river_gdf.intersects(new_point):
-                    points.append(new_point)
-
-    # **Step 8: Filter points using KDTree for redundancy reduction**
-    coords = np.array([[p.x, p.y] for p in points])
-    tree = KDTree(coords)
-
-    # Find pairs of points within the specified radius (half of the grid size)
+        extra_geoms = gpd.GeoSeries([Point(p) for p in extra_points])
+        valid_extra_mask = polygon.contains(extra_geoms) & ~water_combined.intersects(extra_geoms)
+        valid_extra_points = extra_points[valid_extra_mask]
+        valid_points = np.vstack((valid_points, valid_extra_points))
+    
+    tree = KDTree(valid_points)
     pairs = tree.query_pairs(r=100)
+    clusters = {idx: set([idx]) for idx in range(len(valid_points))}
 
-    # Create a set to track which points should be kept
-    keep_points = set(range(len(points)))
+    for i, j in pairs:
+        clusters[i].add(j)
+        clusters[j].add(i)
 
-    # To store clusters of points that are too close together
-    clusters = {}
-
-    # Group points that are within the radius of each other
-    for idx1, idx2 in pairs:
-        if idx1 not in clusters:
-            clusters[idx1] = set([idx1, idx2])
-        else:
-            clusters[idx1].add(idx2)
-
-        if idx2 not in clusters:
-            clusters[idx2] = set([idx2, idx1])
-        else:
-            clusters[idx2].add(idx1)
-
-    # For each cluster (group of points that are too close together), keep only one point
+    keep_points = set(range(len(valid_points)))
     for cluster in clusters.values():
         if len(cluster) > 1:
-            # Randomly choose one point to keep from the cluster
             keep_points -= cluster
             keep_points.add(np.random.choice(list(cluster)))
 
-    # Filter the points based on the `keep_points` set
-    final_points = [points[i] for i in keep_points]
+    final_points = valid_points[list(keep_points)]
+    gdf_points = gpd.GeoDataFrame(geometry=[Point(p) for p in final_points], crs=target_crs)
+    return gdf_points.to_crs(epsg=4326).geometry.tolist()
 
-    # **Step 9: Convert to GeoDataFrame & return**
-    gdf_points = gpd.GeoDataFrame(geometry=final_points, crs=target_crs)
-    gdf_points_wgs84 = gdf_points.to_crs(epsg=4326)
-
-    return gdf_points_wgs84.geometry.tolist()
-
-def extract_unsampled_area(area_polygon, isochrones_gdf):
+def extract_unsampled_area(area_polygon, water_combined, isochrones_gdf):
     """
     Returns the geometry (or MultiPolygon) of the unsampled area:
     The difference between the overall city polygon and the union of the isochrone polygons.
     """
-    union_iso = isochrones_gdf.union_all()
-    unsampled_area = area_polygon.difference(union_iso)
-    return unsampled_area
+    union_iso = isochrones_gdf.geometry.union_all()
+    unsampled_area = area_polygon.difference(unary_union([water_combined, union_iso]))
+    return area_polygon.difference(union_iso)
 
 def identify_large_isochrones(isochrones_gdf, area_threshold=0.05, crs_epsg=2056):
     """
@@ -130,65 +85,52 @@ def identify_large_isochrones(isochrones_gdf, area_threshold=0.05, crs_epsg=2056
     Converts to a projected CRS for accurate area calculations.
     Returns a list of large isochrone geometries.
     """
-    projected_gdf = isochrones_gdf.to_crs(epsg=crs_epsg)  # Convert to projected CRS
-    total_area = projected_gdf.geometry.area.sum()  # Compute total isochrone area
-
-    # Select isochrones that are larger than the threshold proportion of the total area
+    projected_gdf = isochrones_gdf.to_crs(epsg=crs_epsg)
+    total_area = projected_gdf.geometry.area.sum()
     large_isochrones = projected_gdf[projected_gdf.geometry.area / total_area > area_threshold]
-
-    return large_isochrones.to_crs(epsg=4326).geometry.tolist() 
+    return large_isochrones.to_crs(epsg=4326).geometry.tolist()
 
 def random_points_in_polygon(polygon, num_points):
     """
     Returns a list of random Shapely Point objects inside the given polygon.
-    Uses rejection sampling based on the polygon's bounding box.
+    Uses rejection sampling with batch processing for efficiency.
     """
+    
     np.random.seed(SEED)
-    pts = []
     minx, miny, maxx, maxy = polygon.bounds
-    while len(pts) < num_points:
-        p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-        if polygon.contains(p):
-            pts.append(p)
-    return pts
+    points = []
+    while len(points) < num_points:
+        random_x = np.random.uniform(minx, maxx, num_points - len(points))
+        random_y = np.random.uniform(miny, maxy, num_points - len(points))
+        candidates = [Point(x, y) for x, y in zip(random_x, random_y)]
+        points.extend([p for p in candidates if polygon.contains(p)])
+    return points
 
-def sample_additional_points(isochrones_gdf, city_polygon, n_unsampled=50, n_large_isochrones=50):
+def sample_additional_points(isochrones_gdf, city_polygon, water_combined, n_unsampled=50, n_large_isochrones=50):
     """
     Identify unsampled areas within the city and large uniform isochrones, then sample additional points.
     Returns a list of Shapely Points (in WGS84) that can be merged with the existing adaptive sample points.
     """
+    
     additional_points = []
-
-    # Sample points from completely unsampled areas
-    unsampled_area = extract_unsampled_area(city_polygon, isochrones_gdf)
+    unsampled_area = extract_unsampled_area(city_polygon, water_combined, isochrones_gdf)
+    if unsampled_area.is_empty:
+        return additional_points
     
-    if isinstance(unsampled_area, gpd.GeoSeries):  # Handle GeoSeries case
-        unsampled_area = unsampled_area.union_all()
+    areas_to_sample = list(unsampled_area.geoms) if unsampled_area.geom_type == 'MultiPolygon' else [unsampled_area]
+    total_area = sum(area.area for area in areas_to_sample)
+    for area in areas_to_sample:
+        additional_points.extend(random_points_in_polygon(area, int(n_unsampled * (area.area / total_area))))
     
-    if not unsampled_area.is_empty:
-        if unsampled_area.geom_type == 'Polygon':
-            areas_to_sample = [unsampled_area]
-        elif unsampled_area.geom_type == 'MultiPolygon':
-            areas_to_sample = list(unsampled_area.geoms)
-        else:
-            areas_to_sample = []
-        
-        total_area = sum(area.area for area in areas_to_sample)
-        for area in areas_to_sample:
-            area_points = int(n_unsampled * (area.area / total_area))
-            additional_points.extend(random_points_in_polygon(area, area_points))
-
-    # Sample points within large uniform isochrones
     large_isochrones = identify_large_isochrones(isochrones_gdf)
     if large_isochrones:
         total_iso_area = sum(iso.area for iso in large_isochrones)
         for iso in large_isochrones:
-            iso_points = int(n_large_isochrones * (iso.area / total_iso_area))
-            additional_points.extend(random_points_in_polygon(iso, iso_points))
-
+            additional_points.extend(random_points_in_polygon(iso, int(n_large_isochrones * (iso.area / total_iso_area))))
+    
     return additional_points
 
-def generate_radial_grid(center_point, polygon, max_radius, network_area=NETWORK_AREA, num_rings=3, base_points=6, offset_range=5):
+def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_crs, num_rings=3, base_points=6, offset_range=5):
     """
     Generates a radial grid and removes points falling in water bodies.
 
@@ -205,58 +147,30 @@ def generate_radial_grid(center_point, polygon, max_radius, network_area=NETWORK
     """
     
     np.random.seed(SEED)
-
-    # Load water bodies and rivers
-    target_crs = pyproj.CRS.from_epsg(2056)
-    polygon = polygon.to_crs(target_crs).geometry.union_all()
-    water_gdf = ox.features_from_place(network_area, tags={"natural": "water"}).to_crs(target_crs).geometry.union_all()
-    river_gdf = ox.features_from_place(network_area, tags={"waterway": True}).to_crs(target_crs).geometry.union_all()
-    water_mask = water_gdf.union(river_gdf)  # Combine water geometries
-
-    # Convert center point to projected CRS
-    center_gdf = gpd.GeoDataFrame(geometry=[center_point], crs="EPSG:4326").to_crs(target_crs)
-    center_projected = center_gdf.geometry.iloc[0]  # Now in meters
-
+    water_mask = gpd.GeoSeries(water_mask, crs="EPSG:4326").to_crs(target_crs).iloc[0]
+    polygon = gpd.GeoSeries(polygon, crs="EPSG:4326").to_crs(target_crs).iloc[0]
+    center_projected = gpd.GeoSeries([center_point], crs="EPSG:4326").to_crs(target_crs).geometry.iloc[0]
     selected_points = []
-
-    # Add additional points closer to the center
-    # Add 4 additional points within a small radius near the center
-    additional_points_radius = max_radius / 10  # small distance for points around the center
-    for _ in range(4):  # Generate 4 additional points
-        angle = np.random.uniform(0, 2 * np.pi)
-        delta_x = additional_points_radius * np.cos(angle)
-        delta_y = additional_points_radius * np.sin(angle)
-
-        new_point_projected = Point(center_projected.x + delta_x, center_projected.y + delta_y)
-
-        # Convert back to lat/lon
-        new_point_gdf = gpd.GeoDataFrame(geometry=[new_point_projected], crs=target_crs).to_crs("EPSG:4326")
-
-        # Check if the point is in water
-        if polygon.intersects(new_point_projected) and not water_mask.intersects(new_point_projected):
-            selected_points.append(new_point_gdf.geometry.iloc[0])
-
-    # Continue with the existing logic for rings
+    
+    additional_points_radius = max_radius / 10
+    angles = np.random.uniform(0, 2 * np.pi, 4)
+    offsets = np.column_stack((additional_points_radius * np.cos(angles), additional_points_radius * np.sin(angles)))
+    
+    for delta_x, delta_y in offsets:
+        new_point = Point(center_projected.x + delta_x, center_projected.y + delta_y)
+        if polygon.contains(new_point) and not water_mask.contains(new_point):
+            selected_points.append(gpd.GeoSeries([new_point], crs=target_crs).to_crs("EPSG:4326").geometry.iloc[0])
+    
     for i in range(1, num_rings + 1):
-        radius = (i / num_rings) * max_radius  # Adjust spacing
-        num_points = base_points * (1 + i // 2)  # Increase points gradually
+        radius = (i / num_rings) * max_radius
+        num_points = base_points * (1 + i // 2)
         angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
-
-        for theta in angles:
-            delta_x = radius * np.cos(theta)  # X offset in meters
-            delta_y = radius * np.sin(theta)  # Y offset in meters
-            
-            # Add a random offset within the specified range
-            delta_x += np.random.uniform(-offset_range, offset_range)
-            delta_y += np.random.uniform(-offset_range, offset_range)
-            
-            new_point_projected = Point(center_projected.x + delta_x, center_projected.y + delta_y)
-
-            # Convert back to lat/lon
-            new_point_gdf = gpd.GeoDataFrame(geometry=[new_point_projected], crs=target_crs).to_crs("EPSG:4326")
-
-            # Check if the point is in water
-            if polygon.intersects(new_point_projected) and not water_mask.intersects(new_point_projected):
-                selected_points.append(new_point_gdf.geometry.iloc[0])
-
+        offsets = np.column_stack((radius * np.cos(angles), radius * np.sin(angles)))
+        offsets += np.random.uniform(-offset_range, offset_range, offsets.shape)
+        
+        for delta_x, delta_y in offsets:
+            new_point = Point(center_projected.x + delta_x, center_projected.y + delta_y)
+            if polygon.contains(new_point) and not water_mask.contains(new_point):
+                selected_points.append(gpd.GeoSeries([new_point], crs=target_crs).to_crs("EPSG:4326").geometry.iloc[0])
+    
     return selected_points

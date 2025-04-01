@@ -1,37 +1,44 @@
 from variables import *
 import pickle
+import pandas as pd
 import os
-import osmnx as ox
 import json
+import psycopg2
+from psycopg2.extras import execute_values
+from shapely.geometry import mapping
 
 def save_data(travel_data):
     """ Saves travel time data to disk. """
-    with open(DATA_PATH, "wb") as f:
+    with open(STORED_POINTS, "wb") as f:
         pickle.dump(travel_data, f)
-    print(f"✅ Data saved to {DATA_PATH}")
+    print(f"✅ Data saved to {STORED_POINTS}")
 
 def load_data():
     """ Loads travel time data from disk if available. """
-    if os.path.exists(DATA_PATH):
-        with open(DATA_PATH, "rb") as f:
+    if os.path.exists(STORED_POINTS):
+        with open(STORED_POINTS, "rb") as f:
             travel_data = pickle.load(f)
         print("✅ Precomputed travel time data loaded!")
-    else:
-        print("⚠️ No precomputed data found!!")
-        travel_data = initialize_travel_data()
-    return travel_data
+        return travel_data
+    
+    print("⚠️ No precomputed data found!!")
+    return initialize_travel_data()
 
 def initialize_travel_data():
+    """ Initializes the travel data structure. """
     modes = ['walk', 'cycle', 'self-drive-car', 'bicycle_rental', 'escooter_rental', 'car_sharing']
     travel_data = {mode: {"isochrones": {}, "point_isochrones": {}} for mode in modes}
 
     for mode in ['bicycle_rental', 'escooter_rental', 'car_sharing']:
         travel_data[mode]['rental'] = {}
+        travel_data[mode]['station_rental'] = {}
+        travel_data[mode]['station_rental']['point_isochrones'] = {}
     
-    travel_data['bike-parking'] = {}
-    travel_data['car-parking'] = {}
-    
-    travel_data['point_isochrones'] = {'bike-parking': {}, 'car-parking': {}}
+    travel_data.update({
+        'bike-parking': {},
+        'car-parking': {},
+        'point_isochrones': {'bike-parking': {}, 'car-parking': {}}
+    })
     
     return travel_data
 
@@ -44,81 +51,228 @@ def store_travel_time(mode, origin, destination, travel_time, travel_data):
     return travel_data
 
 def store_point_travel_time(mode, center, points, travel_times, travel_data):
+    """ Stores point-based travel time data. """
     travel_data[mode]["point_isochrones"][center] = {
         "points": points,
         "travel_times": travel_times
     }
     return travel_data
 
-def get_stored_parking_info(travel_data, point, mode, point_isochrones=False):
-    parking_type = {
+def get_parking_type(mode):
+    parking_type = parking_type = {
         'cycle': 'bike-parking', 'bicycle_rental': 'bike-parking', 'escooter_rental': 'bike-parking',
         'self-drive-car': 'car-parking', 'car_sharing': 'car-parking'
-    }.get(mode)
+    }
+    return parking_type.get(mode)
+
+def get_stored_parking_info(travel_data, point, mode, point_isochrones=False):
+    """ Retrieves stored parking information if available. """
+    
+    parking_type = get_parking_type(mode)
     
     if point in travel_data[parking_type]:
         print('Retrieving stored parking information.')
         return travel_data[parking_type][point]['parking'], travel_data[parking_type][point]['travel_time']
     
-    if point_isochrones and point in travel_data['point_isochrones'].get(parking_type, {}):
-        print('Retrieving stored parking information from point isochrones.')
+    if point_isochrones and point in travel_data['point_isochrones'][parking_type]:
+        print('Retrieving stored parking information.')
         return travel_data['point_isochrones'][parking_type][point]['parking'], travel_data['point_isochrones'][parking_type][point]['travel_time']
     
     return None, None
 
 def store_parking(mode, station, parking, travel_data, walking_time, point_isochrones=False):
-    parking_type = {
-        'cycle': 'bike-parking', 'bicycle_rental': 'bike-parking', 'escooter_rental': 'bike-parking',
-        'self-drive-car': 'car-parking', 'car_sharing': 'car-parking'
-    }.get(mode)
+    """ Stores parking information. """
     
-    target = travel_data['point_isochrones'] if point_isochrones else travel_data
+    parking_type = get_parking_type(mode)
     
-    target[parking_type][station] = {'parking': parking, 'travel_time': walking_time}
+    storage = travel_data['point_isochrones'][parking_type] if point_isochrones else travel_data[parking_type]
+    storage[station] = {'parking': parking, 'travel_time': walking_time}
+    
     return travel_data
 
-def store_rental_station_info(rental_station, nearest_station, riding_time, mode, travel_data):
+def get_stored_closest_rental(travel_data, mode, destination, point_isochrones=False):
+    
+    if destination in travel_data[mode]['station_rental']:
+        print('Retrieving stored rental information.')
+        return travel_data[mode]['station_rental'][destination]['nearest_rental'], travel_data[mode]['station_rental'][destination]['travel_time']
+    
+    if point_isochrones and destination in travel_data[mode]['station_rental']['point_isochrones']:
+        print('Retrieving stored rental information.')
+        return travel_data[mode]['station_rental']['point_isochrones'][destination]['nearest_rental'], travel_data[mode]['station_rental']['point_isochrones'][destination]['travel_time']
+    
+    return None, None
+
+def store_closest_rental(travel_data, mode, destination, rental_station, walking_time, point_isochrones=False):
+    
+    storage = travel_data[mode]['station_rental']['point_isochrones'] if point_isochrones else travel_data[mode]['station_rental']
+    
+    storage[destination] = {
+        'nearest_rental': rental_station,
+        'travel_time': walking_time
+    }
+    return travel_data
+
+def store_rental_station_info(rental_station, nearest_dest, riding_time, mode, travel_data):
+    """ Stores rental station information. """
+    
     travel_data[mode]['rental'][rental_station] = {
-        "nearest_station": nearest_station,
+        "nearest": nearest_dest,
         "travel_time": riding_time
     }
     return travel_data
 
-def save_gdf_as_geojson(gdf, file_path, mode=MODE, center=None):
-    """
-    Saves a GeoDataFrame as a GeoJSON file with additional metadata.
-
-    Parameters:
-    - gdf (geopandas.GeoDataFrame): The GeoDataFrame to save.
-    - file_path (str): The path where the GeoJSON file will be saved.
-    - metadata (dict, optional): A dictionary of metadata to include in the GeoJSON file.
-    
-    Returns:
-    - None
-    """
-    # Convert GeoDataFrame to GeoJSON format
-    geojson = gdf.to_crs("EPSG:4326").to_json()
-    
-    type = 'network' if NETWORK_ISOCHRONES else 'point'
-    
-    metadata = {
-    "type": type,
-    "mode": mode,
-    "center": center
+def load_public_transport_stations():
+    # Load dataset (modify as needed)
+    dtype_dict = {
+        "abbreviation": "string",   # Text column
+        "districtName": "string",      # Nullable integer
+        "operatingPointType": "string",      # Text column
+        "categories": "string",            # Text column
+        "operatingPointTrafficPointType": "string", 
+        "fotComment": "string"# Nullable float
     }
 
-    # If metadata is provided, add it to the file
-    # Parse the GeoJSON string into a dictionary
-    geojson_dict = json.loads(geojson)
-    
-    # Add metadata to the properties of the GeoJSON
-    geojson_dict['metadata'] = metadata
-    
-    # Convert back to GeoJSON string
-    geojson = json.dumps(geojson_dict, indent=4)
+    df = pd.read_csv(TRANSPORT_STATIONS, sep=';', dtype=dtype_dict, header=0, parse_dates=["editionDate", "validFrom"])
 
-    # Write to a file
-    with open(file_path, 'w') as f:
-        f.write(geojson)
+    # Filter for Swiss public transport stops
+    df = df[(df["isoCountryCode"] == "CH") & (df["stopPoint"] == True)]
 
-    print(f"GeoJSON file saved to {file_path}")
+    # Sort by editionDate (or validFrom if more suitable)
+    df = df.sort_values(by="editionDate", ascending=False)
+
+    # Drop duplicates based on unique stop identifier (e.g., 'numberShort' or 'sloid')
+    df = df.drop_duplicates(subset=["numberShort"], keep="first")
+
+    # Select relevant columns
+    stops_filtered = df[
+        ["designationOfficial", "wgs84East", "wgs84North", "meansOfTransport"]
+    ].rename(columns={
+        "designationOfficial": "name",
+        "wgs84East": "longitude",
+        "wgs84North": "latitude",
+        "meansOfTransport": "transport_modes"
+    })
+    
+    def resolve_duplicates(group):
+        non_unknown = group[group["transport_modes"] != "UNKNOWN"]
+        
+        if not non_unknown.empty:
+            return non_unknown.iloc[0]  # If valid modes exist, keep first one
+        return group.iloc[0]
+
+    stops_filtered = stops_filtered.groupby("name", group_keys=False).apply(resolve_duplicates).reset_index(drop=True)
+    
+    return stops_filtered
+
+def load_shared_mobility_stations():
+    """Loads shared mobility providers from local files, filters stations by type, and saves separate JSON files."""
+
+    # Load providers JSON from file
+    with open(RENTAL_PROVIDERS, "r", encoding="utf-8") as f:
+        providers_data = json.load(f)
+    providers_df = pd.DataFrame(providers_data["data"]["providers"])
+    
+    # Normalize vehicle types by checking for keywords
+    def get_mode(vehicle_type):
+        vehicle_type = vehicle_type.lower()  # Ensure lowercase for matching
+        if "bike" in vehicle_type:
+            return "bike"
+        elif "scooter" in vehicle_type:
+            return "escooter"
+        elif "car" in vehicle_type:
+            return "car"
+        return None  # Ignore other vehicle types
+
+    # Assign mode based on vehicle type
+    providers_df["mode"] = providers_df["vehicle_type"].apply(get_mode)
+
+    # Dictionary to store filtered data for each mode
+    mode_stations = {"bike": [], "escooter": [], "car": []}
+    
+    # Load stations JSON from file
+    with open(RENTAL_STATIONS, "r", encoding="utf-8") as f:
+        stations_data = json.load(f)
+    stations_df = pd.DataFrame(stations_data["data"]["stations"])
+    
+    for mode in mode_stations.keys():
+        # Get provider IDs for the current mode
+        provider_ids = set(providers_df[providers_df["mode"] == mode]["provider_id"])
+
+        # Filter stations by provider_id
+        filtered_stations = stations_df[stations_df["provider_id"].isin(provider_ids)]
+
+        # Remove duplicates based on (lat, lon)
+        filtered_stations = filtered_stations.drop_duplicates(subset=["lat", "lon"])
+
+        # Select relevant columns
+        filtered_stations = filtered_stations[["lat", "lon"]]
+
+        # Convert to dictionary format
+        mode_stations[mode] = filtered_stations.to_dict(orient="records")
+
+    return mode_stations
+
+    
+def save_to_database(gdf):
+    """Saves geodata with the corresponding metadata to the database"""
+    
+    with open(LOGIN, "r") as infile:
+        db_credentials = json.load(infile)
+
+        # Establish database connection
+    with psycopg2.connect(**db_credentials) as conn:
+        with conn.cursor() as cur:
+            try:
+                # Create tables if they do not exist
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS geodata (
+                        id SERIAL PRIMARY KEY,
+                        level INTEGER,
+                        geometry GEOMETRY
+                    );
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS metadata (
+                        id SERIAL PRIMARY KEY,
+                        geodata_id INT REFERENCES geodata(id) ON DELETE CASCADE,
+                        type TEXT,
+                        mode TEXT,
+                        center JSONB
+                    );
+                """)
+                conn.commit()
+            
+                # Prepare data for batch insert
+                meta_dic = gdf.attrs
+                geodata_values = [
+                    (int(level), json.dumps(mapping(geometry)))
+                    for level, geometry in zip(gdf["level"], gdf["geometry"])
+                ]
+                
+                # Batch insert geodata
+                insert_geodata_query = """
+                    INSERT INTO geodata (level, geometry)
+                    VALUES %s RETURNING id;
+                """
+                execute_values(cur, insert_geodata_query, geodata_values)
+                geodata_ids = [row[0] for row in cur.fetchall()]
+                
+                # Prepare metadata insert values
+                metadata_values = [
+                    (geo_id, meta_dic["type"], meta_dic["mode"], json.dumps(meta_dic["center"]))
+                    for geo_id in geodata_ids
+                ]
+                
+                # Batch insert metadata
+                insert_metadata_query = """
+                    INSERT INTO metadata (geodata_id, type, mode, center)
+                    VALUES %s;
+                """
+                execute_values(cur, insert_metadata_query, metadata_values)
+                
+                conn.commit()
+                print("Successfully saved isochrones to database")
+            
+            except Exception as e:
+                conn.rollback()
+                print("Error while uploading isochrones to database:", e)

@@ -1,44 +1,71 @@
 from variables import *
-
 import json
+from rtree import index
+from parameter_selection import r_tree_mode_map
 
-def build_rtree(idx):
+def build_rtree(public_stations, shared_mobility_stations):
     """Loads the combined JSON data and indexes point coordinates in dataset-specific R-trees."""
     rtree_indices = {}
     
-    combined_data = {
-        "bike-parking": json.load(open("data/total_bike_parking.json")),
-        "parking-facilities": json.load(open("data/total_car_parking.json"))
+    datasets = {
+        "bike-parking": COMBINED_DATASETS['json_file_bike_parking'],
+        "parking-facilities": COMBINED_DATASETS['json_file_car_parking']
     }
 
-    # For each dataset in the combined data
-    for dataset_name, data in combined_data.items():
+    for dataset_name, file_path in datasets.items():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"❌ Error loading {dataset_name}: {e}")
+            continue  # Skip if the file is missing or malformed
 
-        if not data.get('features'):
-            print(f"Warning: No features found in {dataset_name}. Skipping...")
+        features = data.get("features", [])
+        if not features:
+            print(f"⚠️ Warning: No features found in {dataset_name}. Skipping...")
             continue
 
-        # Insert each feature into the R-tree index
-        for i, feature in enumerate(data["features"]):
-            coords = feature["geometry"]["coordinates"]  # [longitude, latitude]
-            if len(coords) == 2:  # Ensure valid coordinates
-                idx.insert(i, (coords[0], coords[1], coords[0], coords[1]))  # Bounding box with identical min and max for point
+        rtree_idx = index.Index()
+        for i, feature in enumerate(features):
+            coords = feature.get("geometry", {}).get("coordinates")
+            if coords:  # Ensures coordinates exist before inserting
+                rtree_idx.insert(i, (coords[0], coords[1], coords[0], coords[1]))
 
-        rtree_indices[dataset_name] = idx
+        rtree_indices[dataset_name] = rtree_idx
+        
+    transport_rtree = index.Index()
+    for i, row in public_stations.iterrows():
+        transport_rtree.insert(i, (row["longitude"], row["latitude"], row["longitude"], row["latitude"]))
+    
+    rtree_indices['public-transport'] = transport_rtree
+
+    rental_modes = ["bike", "escooter", "car"]
+    for mode in rental_modes:
+        # Directly use the filtered data from the `load_shared_mobility_stations` function
+        stations = shared_mobility_stations.get(mode, [])
+        
+        if not stations:
+            print(f"⚠️ Warning: No rental stations found for {mode}. Skipping...")
+            continue
+
+        rental_rtree = index.Index()
+        for i, station in enumerate(stations):
+            lon, lat = station["lon"], station["lat"]
+            rental_rtree.insert(i, (lon, lat, lon, lat))
+
+        rtree_indices[f"{mode}-rental"] = rental_rtree
 
     print("✅ R-tree indices built successfully!")
     return rtree_indices
 
 
 def find_nearest(rtree_indices, lon, lat, mode, num_results=5):
-    """Finds the nearest parking spots based on coordinates and MODE."""
-    dataset_key = None
-    if mode in ["cycle", "escooter_rental", "bicycle_rental"]:
-        dataset_key = "bike-parking"
-    elif mode in ["self-drive-car", "car_sharing"]:
-        dataset_key = "parking-facilities"
-
+    """Finds the nearest locations (parking, rentals, or public transport) based on coordinates and mode."""
+    
+    mode_map = r_tree_mode_map()
+    
+    dataset_key = mode_map.get(mode)
     if dataset_key and dataset_key in rtree_indices:
         return list(rtree_indices[dataset_key].nearest((lon, lat, lon, lat), num_results, objects=True))
-    
+
     return []
