@@ -212,67 +212,55 @@ def load_shared_mobility_stations():
 
     return mode_stations
 
-    
+
 def save_to_database(gdf):
-    """Saves geodata with the corresponding metadata to the database"""
-    
+    """Saves geodata and metadata (in flat structure) to the database"""
+
     with open(LOGIN, "r") as infile:
         db_credentials = json.load(infile)
 
-        # Establish database connection
     with psycopg2.connect(**db_credentials) as conn:
         with conn.cursor() as cur:
             try:
-                # Create tables if they do not exist
+                # Create single table with all fields
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS geodata (
                         id SERIAL PRIMARY KEY,
                         level INTEGER,
-                        geometry GEOMETRY
-                    );
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS metadata (
-                        id SERIAL PRIMARY KEY,
-                        geodata_id INT REFERENCES geodata(id) ON DELETE CASCADE,
+                        geometry GEOMETRY,
                         type TEXT,
                         mode TEXT,
-                        center JSONB
+                        coords_center JSONB,
+                        name TEXT
                     );
                 """)
                 conn.commit()
-            
-                # Prepare data for batch insert
+
+                # Access global metadata
                 meta_dic = gdf.attrs
+
+                # Prepare data for batch insert
                 geodata_values = [
-                    (int(level), json.dumps(mapping(geometry)))
+                    (
+                        int(level),
+                        json.dumps(mapping(geometry)),
+                        meta_dic.get("type"),
+                        meta_dic.get("mode"),
+                        json.dumps(meta_dic.get("center")),
+                        meta_dic.get("name", None)
+                    )
                     for level, geometry in zip(gdf["level"], gdf["geometry"])
                 ]
-                
-                # Batch insert geodata
-                insert_geodata_query = """
-                    INSERT INTO geodata (level, geometry)
-                    VALUES %s RETURNING id;
-                """
-                execute_values(cur, insert_geodata_query, geodata_values)
-                geodata_ids = [row[0] for row in cur.fetchall()]
-                
-                # Prepare metadata insert values
-                metadata_values = [
-                    (geo_id, meta_dic["type"], meta_dic["mode"], json.dumps(meta_dic["center"]))
-                    for geo_id in geodata_ids
-                ]
-                
-                # Batch insert metadata
-                insert_metadata_query = """
-                    INSERT INTO metadata (geodata_id, type, mode, center)
+
+                insert_query = """
+                    INSERT INTO geodata (level, geometry, type, mode, coords_center, name)
                     VALUES %s;
                 """
-                execute_values(cur, insert_metadata_query, metadata_values)
-                
+                execute_values(cur, insert_query, geodata_values)
+
                 conn.commit()
                 print("Successfully saved isochrones to database")
-            
+
             except Exception as e:
                 conn.rollback()
                 print("Error while uploading isochrones to database:", e)

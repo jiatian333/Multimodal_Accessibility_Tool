@@ -13,13 +13,9 @@ import math
 class RateLimitExceededError(Exception):
     pass
 
-def sleep():
-    time.sleep(0.2)  # 0.2 seconds
-
-def process_trip_request(random_point, destination, mode_xml, arr=ARR, num_results=1, **kwargs):
-    request = create_trip_request(TIMESTAMP, random_point, destination, arr=arr, mode_xml=mode_xml, num_results=num_results, **kwargs)
+def process_trip_request(random_point, destination, mode_xml, extension_start, extension_end, arr=ARR, num_results=1, **kwargs):
+    request = create_trip_request(TIMESTAMP, random_point, destination, arr=arr, mode_xml=mode_xml, extension_start=extension_start, extension_end=extension_end, num_results=num_results, **kwargs)
     response = send_request(request, ENDPOINT)
-    sleep()
     return check_and_decode_trip_response(response)
 
 def filter_destinations(destinations, public_modes, rtree_indices, G, travel_data, mode):
@@ -84,7 +80,6 @@ def filter_destinations(destinations, public_modes, rtree_indices, G, travel_dat
 def location_ojp(random_point, num_results, include_pt_modes, radius, restriction_type, poi_filter):
     request = create_location_request(TIMESTAMP, random_point, num_results=num_results, include_pt_modes=include_pt_modes, radius=radius, restriction_type=restriction_type, poi_filter=poi_filter)
     response = send_request(request, ENDPOINT)
-    sleep()
     
     if response.status_code == 429:
         raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
@@ -157,7 +152,7 @@ def estimated_walking_time(point1: Point, point2: Point, G) -> int:
     length = nx.shortest_path_length(G, orig, dest, weight='length')
     return math.ceil(length / WALKING_SPEED / 60)
 
-def find_nearest_using_walking_network(idx, x, y, G, mode):
+def find_nearest_using_walking_network(idx, x, y, G, mode, polygon):
     """
     Find the nearest valid station using the OSM walking network for Switzerland.
     
@@ -177,6 +172,8 @@ def find_nearest_using_walking_network(idx, x, y, G, mode):
     nearest_parking, min_distance = None, float('inf')
     for parking in parking_facilities:
         parking_x, parking_y = parking.bbox[:2]
+        if not polygon.contains(Point(parking_x, parking_y)):
+            continue
         parking_node = ox.distance.nearest_nodes(G, parking_x, parking_y)
         try:
             distance = nx.shortest_path_length(G, orig_node, parking_node, weight='length')
@@ -195,15 +192,23 @@ def process_and_get_travel_time(start, end, mode_xml, mode, G):
         print('Using network instead of OJP to determine walking travel time')
         return estimated_walking_time(start, end, G)
     
-    response, check = process_trip_request(start, end, mode_xml, arr=ARR, num_results=1)
+    if mode in ['car_sharing', 'bicycle_rental', 'escooter_rental']:
+        extension_start='<ojp:Extension>'
+        extension_end='</ojp:Extension>'
+    else:
+        extension_start=''
+        extension_end=''
+    
+    response, check = process_trip_request(start, end, mode_xml, extension_start=extension_start, extension_end=extension_end, arr=ARR, num_results=1)
     if "429" in check:
         raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
     if any(err in check for err in ["/ data error!", "/ no valid response!", "/ no trip found!"]):
         print(f'No valid response from OJP. Skipping! Check resulted in: {check}')
         return None
-    
-    journeys = parse_trip_response(response)
-    duration = decode_duration([journey['duration'] for journey in journeys] if journeys else [])
+    if '/ same station!' in check:
+        return 0
+    journeys = parse_trip_response(response, mode)
+    duration = decode_duration(journeys) if journeys else []
     if not duration:
         print('No valid travel time from OJP. Skipping!')
         return None
@@ -227,7 +232,7 @@ def distance_weights(transport_modes, min_distance, mode_priority, base_max_dist
     weighted_distance = min_distance * weight_factor
     return weighted_distance
 
-def find_valid_nearest_station(idx, destinations, mode, travel_data, G, public_transport_modes):
+def find_valid_nearest_station(idx, destinations, mode, travel_data, G, public_transport_modes, polygon):
     """Find the nearest valid station within the acceptable walking distance.
        Applies a weight to destinations with more transport modes if enabled.
        Also slightly increases max walking distance for better-connected stations.
@@ -243,7 +248,7 @@ def find_valid_nearest_station(idx, destinations, mode, travel_data, G, public_t
         if nearest:
             return dest, nearest, travel_time_walk
         
-        min_distance, nearest = find_nearest_using_walking_network(idx, dest.x, dest.y, G, mode)
+        min_distance, nearest = find_nearest_using_walking_network(idx, dest.x, dest.y, G, mode, polygon)
         if not nearest:
             continue
             

@@ -58,7 +58,7 @@ def network_travel_times(travel_data, random_points, G, polygon, idx, public_tra
             
             if MODE != 'walk':
                 if not rental:
-                    destination, nearest, travel_time_walk = find_valid_nearest_station(idx, destination, MODE, travel_data, G, public_transport_modes=stored)
+                    destination, nearest, travel_time_walk = find_valid_nearest_station(idx, destination, MODE, travel_data, G, public_transport_modes=stored, polygon=polygon)
                 else:
                     travel_time_walk = stored
                 
@@ -92,7 +92,7 @@ def network_travel_times(travel_data, random_points, G, polygon, idx, public_tra
             successful_points+=1
             
         except RateLimitExceededError as e:
-            print(f"Rate limit exceeded, exiting loop: {e}")
+            print(f"Rate limit exceeded, exiting loop: {e}. Isochrones will still be generated using the existing information but may appear incomplete/contain atrifacts")
             break  # Exit the loop if rate limit is exceeded
     
     print(f"Successfully processed and stored {successful_points} out of {len(random_points)} points.")
@@ -101,38 +101,70 @@ def network_travel_times(travel_data, random_points, G, polygon, idx, public_tra
     return travel_data
     
     
-def point_travel_times(travel_data, center, points, idx, G, mode=MODE):
+def point_travel_times(travel_data, center, points, idx, G, polygon, public_transport_modes, mode=MODE):
     """ Computes and stores travel times from a center to multiple points. """
     
-    travel_times = []
-    nearest, travel_time_walk = None, 0
+    travel_times, valid_points = [], []
+    nearest, travel_time_start = None, 0
+    rental_modes = {'escooter_rental', 'bicycle_rental', 'car_sharing'}
+    rental = (mode in rental_modes)
     
-    if mode != 'walk':
-        nearest, travel_time_walk = get_stored_parking_info(travel_data, center, mode, point_isochrones=True)
-        
-        if not nearest:
-            _, nearest = find_nearest_using_walking_network(idx, center.x, center.y, G, mode)
+    try: 
+        if mode != 'walk':
+            nearest, travel_time_start = get_stored_parking_info(travel_data, center, mode, point_isochrones=True)
             
             if not nearest:
-                print(f'No valid parking found near point {center}')
-                return None
-            
-            # Determine travel time walk between nearest and center, assume parking is available at end point
-            if (travel_time_walk := process_and_get_travel_time(center, nearest, mode_selection('walk'), 'walk', G)) is None:
-                print(f'Could not determine travel time between point {center} and the closest parking location')
-                return None
-            
-            travel_data = store_parking(MODE, center, nearest, travel_data, travel_time_walk, point_isochrones=True)
-            
-    start = nearest if nearest else center
-    mode = {'car_sharing': 'self-drive-car', 'bicycle_rental': 'cycle'}.get(MODE, MODE)
-    mode_xml = mode_selection(mode)
-    
-    for radial_point in points:
-        # Not yet handles None cases and RateLimitExceeded from function correctly
-        travel_time = travel_time_walk + process_and_get_travel_time(start, radial_point, mode_xml, mode, G)
-        print(f'Successfully determined a travel time of {travel_time} from {start} to {radial_point} using mode: {MODE}')
-        travel_times.append(travel_time)
+                if rental:
+                    radius, restriction_type, poi_filter = select_parameters(rental=rental)
+                    nearest, _, _ = process_location_request(center, radius, restriction_type, poi_filter, polygon, idx, mode, G, travel_data, num_results=1, rental=rental, include_pt_modes=False, public_transport_modes=public_transport_modes)
+                    if not nearest: 
+                        print(f'No valid parking/rental found near point {center}. Not possible to determine point isochrones')
+                        return None
+                    nearest = nearest[0]
+                else:
+                    _, nearest = find_nearest_using_walking_network(idx, center.x, center.y, G, mode, polygon)
+                
+                if not nearest:
+                    print(f'No valid parking/rental found near point {center}. Not possible to determine point isochrones')
+                    return None
+                
+                # Determine travel time walk between nearest and center, assume parking is available at end point
+                if (travel_time_start := process_and_get_travel_time(center, nearest, mode_selection('walk'), 'walk', G)) is None:
+                    print(f'Could not determine travel time between point {center} and the closest parking/rental location. Not possible to determine point isochrones')
+                    return None
+                
+                travel_data = store_parking(MODE, center, nearest, travel_data, travel_time_start, point_isochrones=True)
+                
+        start = nearest if nearest else center
+        mode = {'car_sharing': 'self-drive-car', 'bicycle_rental': 'cycle'}.get(MODE, MODE)
+        mode_xml = mode_selection(mode)
         
-    travel_data = store_point_travel_time(MODE, center, points, travel_times, travel_data)
+        for radial_point in points:
+            # Not yet handles None cases and RateLimitExceeded from function correctly
+            additional_travel_time = travel_time_start
+            if rental:
+                nearest_end, _, _ = process_location_request(radial_point, radius, restriction_type, poi_filter, polygon, idx, MODE, G, travel_data, num_results=1, rental=rental, include_pt_modes=False, public_transport_modes=public_transport_modes)
+                if not nearest_end:
+                    print(f'No valid rental found near endpoint {radial_point}. Skipping point. ')
+                    continue
+                nearest_end=nearest_end[0]
+                if (travel_time_end := process_and_get_travel_time(radial_point, nearest_end, mode_selection('walk'), 'walk', G)) is None:
+                    print(f'Could not determine travel time between endpoint {radial_point} and the closest rental location. Skipping point')
+                    continue
+                additional_travel_time+=travel_time_end
+                radial_point = nearest_end
+                
+            if (travel_time_mode := process_and_get_travel_time(start, radial_point, mode_xml, mode, G)) is None:
+                print(f'Could not determine the final travel time using {MODE}. Skipping point. ')
+                continue
+            
+            travel_time = additional_travel_time + travel_time_mode
+            print(f'Successfully determined a travel time of {travel_time} from {start} to {radial_point} using mode: {MODE}')
+            travel_times.append(travel_time)
+            valid_points.append(radial_point)
+        
+    except RateLimitExceededError as e:
+        print(f'Rate limit exceeded! Point isochrones for point {center} may appear incomplete.')
+        
+    travel_data = store_point_travel_time(MODE, center, valid_points, travel_times, travel_data)
     return travel_data

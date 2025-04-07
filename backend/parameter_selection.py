@@ -28,12 +28,12 @@ def get_max_radius(mode):
     """Returns the maximum radius for a given mode."""
     
     mode_max_radius = {
-        'walk': 1500,  # 1.5 km for walking
-        'cycle': 3000,  # 5 km for bike
-        'bicycle_rental': 3000,
-        'escooter_rental': 3000,
-        'self-drive-car': 6000, # 10 km for car
-        'car_sharing': 6000 
+        'walk': 1500,
+        'cycle': 2500,
+        'bicycle_rental': 2500,
+        'escooter_rental': 2500,
+        'self-drive-car': 5000,
+        'car_sharing': 5000 
     }
     
     return mode_max_radius.get(mode, 1000)

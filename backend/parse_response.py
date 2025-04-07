@@ -11,28 +11,32 @@ def check_and_decode_trip_response(response_xml):
         check += ' / no valid response!'
     elif '<siri:ErrorText>TRIP_NOTRIPFOUND</siri:ErrorText>' in response_text:
         check += '/ no trip found!'
+    elif '<siri:ErrorText>TRIP_ORIGINDESTINATIONIDENTICAL</siri:ErrorText>' in response_text:
+        check+=' / same station!'
     
     return response_text, check
 
-def parse_trip_response(response_xml):
+def parse_trip_response(response_xml, mode):
     """
-    Parses the OJP TripResponse XML to extract journey details.
+    Parses the OJP TripResponse XML and extracts all durations of trip legs
+    where the individual mode matches the given mode (e.g., 'self-drive-car').
     """
-    root = ET.fromstring(response_xml)
     namespaces = {
         'siri': "http://www.siri.org.uk/siri",
         'ojp': "http://www.vdv.de/ojp"
     }
-    journeys = []
-    
-    for journey in root.findall(".//ojp:TripResult", namespaces):
-        trip_info = {
-            'duration': journey.findtext(".//ojp:Duration", default="Unknown", namespaces=namespaces)
-        }
-        
-        journeys.append(trip_info)
-    
-    return journeys
+
+    root = ET.fromstring(response_xml)
+    durations = []
+
+    for trip_result in root.findall(".//ojp:TripResult", namespaces):
+        for trip_leg in trip_result.findall(".//ojp:TripLeg", namespaces):
+            mode_element = trip_leg.find(".//ojp:IndividualMode", namespaces)
+            if mode_element is not None and mode_element.text == mode:
+                duration = trip_leg.findtext(".//ojp:Duration", default="Unknown", namespaces=namespaces)
+                durations.append(duration)
+
+    return durations
 
 def decode_duration(duration):
     match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration[0])

@@ -35,7 +35,8 @@
                     <ojp:IncludeLegProjection>${include_leg_proj}</ojp:IncludeLegProjection>
                     <ojp:IncludeTurnDescription>${include_turn_desc}</ojp:IncludeTurnDescription>
                     <ojp:IgnoreRealtimeData>${real_time}</ojp:IgnoreRealtimeData>
-                    <ojp:IncludeIntermediateStops>${include_stops}</ojp:IncludeIntermediateStops>${mode_xml}
+                    <ojp:IncludeIntermediateStops>${include_stops}</ojp:IncludeIntermediateStops>${extension_start}
+                    ${mode_xml}${extension_end}
                 </ojp:Params>
             </ojp:OJPTripRequest>
         </ServiceRequest>

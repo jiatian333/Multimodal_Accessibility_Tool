@@ -1,3 +1,1 @@
-<ojp:Extension>
-    <ojp:ItModesToCover>${mode}</ojp:ItModesToCover>
-</ojp:Extension>
+<ojp:ItModesToCover>${mode}</ojp:ItModesToCover>

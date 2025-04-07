@@ -1,7 +1,7 @@
 import requests
 from variables import *
 
-def create_trip_request(timestamp, origin, destination, mode_xml, arr=ARR, real_time=True,
+def create_trip_request(timestamp, origin, destination, mode_xml, arr=ARR, extension_start='', extension_end='', real_time=True,
                         num_results=2, include_stops=False, include_track_sect=False, include_leg_proj=False, 
                         include_turn_desc=False):
     """
@@ -23,7 +23,9 @@ def create_trip_request(timestamp, origin, destination, mode_xml, arr=ARR, real_
         "${include_leg_proj}": str(include_leg_proj).lower(),
         "${include_turn_desc}": str(include_turn_desc).lower(),
         "${mode_xml}": mode_xml,
-        "${real_time}": str(real_time).lower()
+        "${real_time}": str(real_time).lower(),
+        "${extension_start}": extension_start,
+        "${extension_end}": extension_end
     }
     
     for key, value in replacements.items():

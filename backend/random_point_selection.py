@@ -6,6 +6,7 @@ import geopandas as gpd
 from shapely.ops import unary_union
 from shapely.geometry import Point
 from scipy.spatial import KDTree
+from sklearn.cluster import KMeans
 
 def generate_adaptive_sample_points(polygon, water_combined, target_crs, mode=MODE):
     np.random.seed(SEED)
@@ -77,7 +78,7 @@ def extract_unsampled_area(area_polygon, water_combined, isochrones_gdf):
     """
     union_iso = isochrones_gdf.geometry.union_all()
     unsampled_area = area_polygon.difference(unary_union([water_combined, union_iso]))
-    return area_polygon.difference(union_iso)
+    return unsampled_area
 
 def identify_large_isochrones(isochrones_gdf, area_threshold=0.05, crs_epsg=2056):
     """
@@ -130,7 +131,7 @@ def sample_additional_points(isochrones_gdf, city_polygon, water_combined, n_uns
     
     return additional_points
 
-def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_crs, num_rings=3, base_points=6, offset_range=5):
+def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_crs, mode, num_rings=None, base_points=None, offset_range=None, max_points=50):
     """
     Generates a radial grid and removes points falling in water bodies.
 
@@ -147,13 +148,28 @@ def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_c
     """
     
     np.random.seed(SEED)
+    
+    # Adaptive ring count and base points per mode
+    if mode == 'walk':
+        num_rings = num_rings or 5
+        base_points = base_points or 8
+        offset_range=offset_range or 50# Denser grid for walking
+    elif mode in ['cycle', 'bicycle_rental', 'escooter_rental']:
+        num_rings = num_rings or 6
+        base_points = base_points or 7
+        offset_range=offset_range or 100# Balanced for cycling
+    else:
+        num_rings = num_rings or 7
+        base_points = base_points or 6
+        offset_range=offset_range or 200# Less dense for car
+    
     water_mask = gpd.GeoSeries(water_mask, crs="EPSG:4326").to_crs(target_crs).iloc[0]
     polygon = gpd.GeoSeries(polygon, crs="EPSG:4326").to_crs(target_crs).iloc[0]
     center_projected = gpd.GeoSeries([center_point], crs="EPSG:4326").to_crs(target_crs).geometry.iloc[0]
     selected_points = []
     
     additional_points_radius = max_radius / 10
-    angles = np.random.uniform(0, 2 * np.pi, 4)
+    angles = [np.pi/4, 3*np.pi/4, 5*np.pi/4, 7*np.pi/4] #np.random.uniform(0, 2 * np.pi, 4)
     offsets = np.column_stack((additional_points_radius * np.cos(angles), additional_points_radius * np.sin(angles)))
     
     for delta_x, delta_y in offsets:
@@ -164,7 +180,9 @@ def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_c
     for i in range(1, num_rings + 1):
         radius = (i / num_rings) * max_radius
         num_points = base_points * (1 + i // 2)
+        rotation_angle = np.random.uniform(-np.pi/5, np.pi/5)
         angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+        angles = (angles + rotation_angle) % (2 * np.pi)
         offsets = np.column_stack((radius * np.cos(angles), radius * np.sin(angles)))
         offsets += np.random.uniform(-offset_range, offset_range, offsets.shape)
         
@@ -172,5 +190,10 @@ def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_c
             new_point = Point(center_projected.x + delta_x, center_projected.y + delta_y)
             if polygon.contains(new_point) and not water_mask.contains(new_point):
                 selected_points.append(gpd.GeoSeries([new_point], crs=target_crs).to_crs("EPSG:4326").geometry.iloc[0])
+    
+    if len(selected_points) > max_points:
+        points_array = np.array([(p.x, p.y) for p in selected_points])
+        kmeans = KMeans(n_clusters=max_points, random_state=42, n_init=10).fit(points_array)
+        selected_points = [Point(x, y) for x, y in kmeans.cluster_centers_]
     
     return selected_points

@@ -7,6 +7,7 @@ from shapely.geometry import Point
 
 # Set GDAL environment variable
 os.environ['GDAL_DATA'] = os.path.join(f'{os.sep}'.join(sys.executable.split(os.sep)[:-1]), 'Library', 'share', 'gdal')
+os.environ['OMP_NUM_THREADS'] = '1'  # Limit threads to 1
 
 from travel_times import network_travel_times, point_travel_times
 from update_data import check_for_updates, filter_and_combine_json_files
@@ -29,7 +30,8 @@ def main():
     idx = build_rtree(public_transport_stations, rental_locations)
     
     G = ox.graph_from_place(NETWORK_AREA, network_type="walk")
-    city_poly = ox.geocode_to_gdf(NETWORK_AREA).geometry.union_all()
+    city_poly = ox.geocode_to_gdf(CITY_AREA).geometry.union_all()
+    canton_poly = ox.geocode_to_gdf(NETWORK_AREA).geometry.union_all()
     water_gdf = ox.features_from_place(NETWORK_AREA, tags={"natural": "water"}).geometry.union_all()
     river_gdf = ox.features_from_place(NETWORK_AREA, tags={"waterway": True}).geometry.union_all()
     water_combined = water_gdf.union(river_gdf)
@@ -37,14 +39,14 @@ def main():
     
     if NETWORK_ISOCHRONES:
         random_points = generate_adaptive_sample_points(city_poly, water_combined, target_crs, mode=MODE)
-        travel_data = network_travel_times(travel_data, random_points, G, city_poly, idx, public_transport_stations)
+        travel_data = network_travel_times(travel_data, random_points, G, canton_poly, idx, public_transport_stations)
         save_data(travel_data)
         isochrones, center = generate_isochrones(travel_data, MODE, water_combined, city_poly)
         
         if IMPROVE_ISOCHRONES:
             print('Searching for additional points to improve the isochrones')
             new_points = sample_additional_points(isochrones, city_poly, water_combined, n_unsampled=100, n_large_isochrones=50)
-            travel_data = network_travel_times(travel_data, new_points, G, city_poly, idx, public_transport_stations)
+            travel_data = network_travel_times(travel_data, new_points, G, canton_poly, idx, public_transport_stations)
             save_data(travel_data)
             isochrones, center = generate_isochrones(travel_data, MODE, water_combined, city_poly)
     else:
@@ -54,18 +56,17 @@ def main():
         max_radius = get_max_radius(MODE)
         
         if center in travel_data[MODE]['point_isochrones']:
-            print('Isochrones for selected center already computed')
+            print('Isochrones for selected center already computed. Check database!')
             return 
         
-        points = generate_radial_grid(center, city_poly, water_combined, max_radius, target_crs, num_rings=4, base_points=6, offset_range=50)
+        points = generate_radial_grid(center, canton_poly, water_combined, max_radius, target_crs, MODE, offset_range=50)
         
         # Not yet implemented for rental modes
-        if (travel_data := point_travel_times(travel_data, center, points, idx, G, mode=MODE)) is None:
-            print(f'No isochrones computed for point {center} due to an error')
+        if (travel_data := point_travel_times(travel_data, center, points, idx, G, canton_poly, public_transport_stations, mode=MODE)) is None:
             return
             
         save_data(travel_data)
-        isochrones, center = generate_isochrones(travel_data, MODE, water_combined, city_poly, center=center)
+        isochrones, center = generate_isochrones(travel_data, MODE, water_combined, canton_poly, center=center)
     
     save_to_database(isochrones)
     
