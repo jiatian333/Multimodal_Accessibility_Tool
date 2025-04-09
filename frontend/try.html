@@ -7,6 +7,7 @@
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <script src="https://d3js.org/d3.v4.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -142,6 +143,7 @@
     z-index: 1000;
     pointer-events: none;
   }
+
   </style>
 </head>
 <body>
@@ -177,9 +179,40 @@
         <div id="map" style="position: relative;">
           <img src="north-arrow-2.svg" alt="Nordpfeil", class="pfeil">
           <div class="isochrone-legend">
-            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: red;"></div>10–15 min</div>
-            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: orange;"></div>5–10 min</div>
-            <div class="isochrone-legend-item"><div class="isochrone-legend-color" style="background-color: green;"></div>0–5 min</div>
+            <strong>Isochrone Color:</strong>
+            <div class="isochrone-legend-item">
+              <div class="isochrone-legend-color" style="background-color: red;"></div>10–15 min
+            </div>
+            <div class="isochrone-legend-item">
+              <div class="isochrone-legend-color" style="background-color: orange;"></div>5–10 min
+            </div>
+            <div class="isochrone-legend-item">
+              <div class="isochrone-legend-color" style="background-color: #66cc66;"></div>0–5 min
+            </div>
+            <hr style="margin: 8px 0;">
+            <strong>Station Type:</strong>
+            <div class="isochrone-legend-item">
+              <div class="isochrone-legend-color" style="
+                background-color: #dddd00;
+                border: 3.5px solid #006400;
+                opacity: 0.5;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+              "></div>
+              Bus Station
+            </div>
+            <div class="isochrone-legend-item">
+              <div class="isochrone-legend-color" style="
+                background-color: #dddddd;
+                border: 3.5px solid #005577;
+                opacity: 0.5;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+              "></div>
+              Train Station
+            </div>
           </div>
         </div>
       </div>
@@ -195,22 +228,185 @@
     function closePopup() {
       document.getElementById('popup').style.display = 'none';
     }
-
-    const map = L.map('map').setView([47.3769, 8.5417], 13);
-
+  
+    const map = L.map('map').setView([47.3769, 8.5417], 12);
+  
     const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap contributors © CARTO'
     }).addTo(map);
+  
+    const wmsLayerwalk_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='walk' AND type='network'"
+    });
+  
+    const wmsLayercycle_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='cycle' AND type='network'"
+    });
+  
+    const wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='walk' AND type='point'"
+    });
+  
+    const wmsLayercycle_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='cycle' AND type='point'"
+    });
+  
+    const busLayerGroup = L.layerGroup().addTo(map);
+    const trainLayerGroup = L.layerGroup().addTo(map);
+    let markers = [];
+    const stationLookup = {};
+    let busLoaded = false;
+    let trainLoaded = false;
+  
+    function enableSearchIfReady() {
+      if (busLoaded && trainLoaded) {
+        document.getElementById("showIsochroneBtn").addEventListener("click", function () {
+          const input = document.getElementById("stationInput").value.trim().toLowerCase();
+          if (stationLookup[input]) {
+            const marker = stationLookup[input];
+            const latlng = marker.getLatLng();
+            map.setView(latlng, 12);
+            marker.openPopup();
+          } else {
+            alert("Not a valid station name.");
+          }
+        });
+      }
+    }
+  
+    d3.csv("./data/bus_stations.csv", function (error, data) {
+      if (error) throw error;
+      data.forEach(function (d) {
+        let lat = parseFloat(d.latitude);
+        let lon = parseFloat(d.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          let marker = L.circleMarker([lat, lon], {
+            radius: 3,
+            color: '#007bff',
+            fillColor: '#007bff',
+            fillOpacity: 0.8,
+            weight: 1
+          }).bindPopup(`<b>${d.name}</b>`).addTo(busLayerGroup);
+          markers.push(marker);
+          stationLookup[d.name.toLowerCase()] = marker;
+        }
+      });
+      busLoaded = true;
+      enableSearchIfReady();
+    });
+  
+    d3.csv("./data/train_stations.csv", function (error, data) {
+      if (error) throw error;
+      data.forEach(function (d) {
+        let lat = parseFloat(d.latitude);
+        let lon = parseFloat(d.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          let marker = L.circleMarker([lat, lon], {
+            radius: 3,
+            color: '#ff6600',
+            fillColor: '#ff6600',
+            fillOpacity: 0.8,
+            weight: 1
+          }).bindPopup(`<b>${d.name}</b>`).addTo(trainLayerGroup);
+          markers.push(marker);
+          stationLookup[d.name.toLowerCase()] = marker;
+        }
+      });
+      trainLoaded = true;
+      enableSearchIfReady();
+    });
+  
+    // LayerControls
+    const layersControlStatic = L.control.layers({
+  "Car": cartoLayer,
+  "Bike": wmsLayercycle_static,
+  "Walk": wmsLayerwalk_static
+}, {
+  "Bus Stations": busLayerGroup,
+  "Train Stations": trainLayerGroup
+}, { collapsed: false });
+  
+    const layersControlDynamic = L.control.layers({
+  "Car": cartoLayer,
+  "Bike": wmsLayercycle_dynamic,
+  "Walk": wmsLayerwalk_dynamic
+}, {
+  "Bus Stations": busLayerGroup,
+  "Train Stations": trainLayerGroup
+}, { collapsed: false });
 
+  
+    layersControlStatic.addTo(map);
+  
+    // Dropdown UI
+    const dropdown = document.createElement("select");
+    dropdown.className = "form-select mt-2";
+    dropdown.innerHTML = `
+      <option value="static">Static</option>
+      <option value="dynamic">Dynamic</option>
+    `;
+    document.querySelector(".sidebar").prepend(dropdown);
+  
+    // Sichtbarkeit steuern
+    const stationInput = document.getElementById("stationInput");
+    const showBtn = document.getElementById("showIsochroneBtn");
+  
+    function toggleMode(mode) {
+  // Alle Layer, die wir managen wollen
+  const allStaticLayers = [cartoLayer, wmsLayercycle_static, wmsLayerwalk_static];
+  const allDynamicLayers = [wmsLayercycle_dynamic, wmsLayerwalk_dynamic];
+  const overlays = [busLayerGroup, trainLayerGroup];
+
+  // Alles vorher aus der Karte entfernen
+  [...allStaticLayers, ...allDynamicLayers, ...overlays].forEach(layer => {
+    if (map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+
+  if (mode === "static") {
+    stationInput.style.display = "none";
+    showBtn.style.display = "none";
+    map.removeControl(layersControlDynamic);
+    layersControlStatic.addTo(map);
+    // Optional: Standardlayer aktivieren
+    cartoLayer.addTo(map);
+  } else {
+    stationInput.style.display = "block";
+    showBtn.style.display = "block";
+    map.removeControl(layersControlStatic);
+    layersControlDynamic.addTo(map);
+    // Optional: Standardlayer aktivieren
+    wmsLayerwalk_dynamic.addTo(map);
+  }
+}
+  
+    dropdown.addEventListener("change", (e) => {
+      toggleMode(e.target.value);
+    });
+  
+    toggleMode("static");
+  
+  
     L.control.scale().addTo(map);
-
-    const layersControl = L.control.layers({
-      "Basiskarte": cartoLayer
-    }, {
-      "Car": cartoLayer,
-      "Bike": cartoLayer,
-      "Walk": cartoLayer
-    }, { collapsed: false }).addTo(map);
   </script>
+  
+  
 </body>
 </html>
