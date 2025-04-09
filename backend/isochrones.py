@@ -9,47 +9,39 @@ from scipy.ndimage import (
     generic_filter, gaussian_filter, grey_dilation,
     binary_dilation, binary_closing, binary_fill_holes
 )
-from shapely.ops import unary_union, polygonize
+from shapely.ops import polygonize
 from shapely.validation import make_valid
 from affine import Affine
 from skimage import measure
 
-def post_processing(isochrones_gdf):
-    # Ensure all geometries are valid
-    isochrones_gdf["geometry"] = isochrones_gdf["geometry"].apply(
-        lambda geom: make_valid(geom) if not geom.is_valid else geom
-    )
+def validate_geometry(geom):
+    """Ensure geometry is valid using buffer trick and make_valid fallback."""
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+    return geom if geom.is_valid else make_valid(geom)
 
-    # Sort by level (ascending = inner rings first)
-    isochrones_gdf.sort_values("level", inplace=True)
+def post_processing(isochrones_gdf):
+
+    # Calculate area and sort by it (smallest first)
+    isochrones_gdf["area"] = isochrones_gdf["geometry"].area
+    isochrones_gdf.sort_values("area", inplace=True)
 
     processed = []
     covered_area = None
 
     for _, row in isochrones_gdf.iterrows():
-        geom = row.geometry
-        # Subtract previous coverage to isolate current ring
-        if covered_area:
-            geom = geom.difference(covered_area)
-        if not geom.is_empty and geom.is_valid and geom.area > 1e-6:
+        geom = row.geometry.difference(covered_area) if covered_area else row.geometry
+
+        geom = validate_geometry(geom)
+
+        if not geom.is_empty:
             processed.append({"level": row.level, "geometry": geom})
-            covered_area = unary_union([covered_area, geom]) if covered_area else geom
+            covered_area = geom if covered_area is None else covered_area.union(geom)
 
-    # Assemble cleaned GeoDataFrame
     cleaned_gdf = gpd.GeoDataFrame(processed, columns=["level", "geometry"], crs=isochrones_gdf.crs)
-
-    # Optional: dissolve by level in case polygons got split
     cleaned_gdf = cleaned_gdf.dissolve(by="level").reset_index()
-    cleaned_gdf['geometry'] = cleaned_gdf["geometry"].apply(lambda geom: make_valid(geom) if not geom.is_valid else geom)
-    
-    # Project back to WGS84 (EPSG:4326)
+    cleaned_gdf["geometry"] = cleaned_gdf["geometry"].apply(validate_geometry)
     cleaned_gdf = cleaned_gdf.to_crs(epsg=4326)
-
-    # Fix any invalid geometries caused by reprojection
-    cleaned_gdf["geometry"] = cleaned_gdf["geometry"].apply(
-        lambda geom: geom.buffer(0) if not geom.is_valid else geom
-    )
-
     return cleaned_gdf
 
 def extract_travel_times(travel_data, mode, center):
@@ -78,6 +70,30 @@ def fill_gaps(grid_z, smooth_sigma):
     filled_grid[nan_mask] = grey_dilation(smoothed_grid, size=(5, 5), mode='nearest')[nan_mask]
     return gaussian_filter(filled_grid, sigma=smooth_sigma)
 
+def extract_contours(level, mask, city_mask_area, isochrones, transform):
+    mask = binary_fill_holes(mask)
+    mask = binary_closing(mask, structure=np.ones((5, 5)))
+    mask = binary_dilation(mask, structure=np.ones((3, 3)))
+
+    # Extract iso-valued contours using skimage
+    contours = measure.find_contours(mask.astype(np.uint8), level=0.5)
+
+    lines = [
+        LineString([(c[1], c[0]) for c in contour])
+        for contour in contours if len(contour) > 1
+    ]
+
+    # Polygonize the contour lines
+    for poly in polygonize(lines):
+        poly = Polygon([transform * (x, y) for x, y in poly.exterior.coords])
+
+        poly = validate_geometry(poly).intersection(city_mask_area)
+
+        if not poly.is_empty and poly.area >= 1e-6:
+            isochrones.append({"level": level, "geometry": poly})
+        
+    return isochrones
+
 def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sigma=3, center=None):
     points, times, center = extract_travel_times(travel_data, mode, center)
     transform_to = Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
@@ -88,7 +104,7 @@ def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sig
     levels = np.arange(times.min(), times.max() + 1, step=1)
     
     buffer = 250
-    resolution = 500 if not NETWORK_ISOCHRONES else 1000
+    resolution = 1000 if NETWORK_ISOCHRONES else 500
     lon_min, lat_min = points.min(axis=0)
     lon_max, lat_max = points.max(axis=0)
     grid_x, grid_y = np.meshgrid(
@@ -116,42 +132,17 @@ def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sig
     transform = Affine.translation(lon_min - buffer, lat_min - buffer) * Affine.scale(xres, yres)
 
     isochrones = []
+    epsilon = 0.01
+    
+    # Cover the lowest possible level
+    level = levels[0]
+    mask = grid_z <= level + epsilon
+    isochrones = extract_contours(level, mask, city_mask_area, isochrones, transform)
 
     for i in range(len(levels) - 1):
         lower, upper = levels[i], levels[i + 1]
-
-        mask = (grid_z >= lower) & (grid_z < upper + 0.01)
-        mask = binary_fill_holes(mask)
-        mask = binary_closing(mask, structure=np.ones((5, 5)))
-        mask = binary_dilation(mask, structure=np.ones((3, 3)))
-
-        # Extract iso-valued contours using skimage
-        contours = measure.find_contours(mask.astype(np.uint8), level=0.5)
-
-        lines = []
-        for contour in contours:
-            if len(contour) < 2:
-                continue
-            # Flip coordinates (skimage returns [row, col], i.e., [y, x])
-            line = LineString([(c[1], c[0]) for c in contour])
-            lines.append(line)
-
-        # Polygonize the contour lines
-        for poly in polygonize(lines):
-            poly = Polygon([transform * (x, y) for x, y in poly.exterior.coords])
-            
-            # Validate and clean geometry
-            if not poly.is_valid:
-                poly = poly.buffer(0)
-            if not poly.is_valid:
-                poly = make_valid(poly)
-
-            poly = poly.intersection(city_mask_area)
-
-            if poly.is_empty or poly.area < 1e-6:
-                continue
-
-            isochrones.append({"level": upper, "geometry": poly})
+        mask = (grid_z > lower) & (grid_z <= upper + epsilon)
+        isochrones = extract_contours(upper, mask, city_mask_area, isochrones, transform)
 
     if not isochrones:
         raise ValueError("No isochrones generated. Check data and mask processing.")

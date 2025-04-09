@@ -3,10 +3,11 @@ import json
 from rtree import index
 from parameter_selection import r_tree_mode_map
 
-def build_rtree(public_stations, shared_mobility_stations):
-    """Loads the combined JSON data and indexes point coordinates in dataset-specific R-trees."""
+def build_rtree(public_stations):
+    """Builds R-tree indices for parking, public transport, and shared mobility (from combined JSON)."""
     rtree_indices = {}
-    
+
+    # --- Load static datasets like parking facilities ---
     datasets = {
         "bike-parking": COMBINED_DATASETS['json_file_bike_parking'],
         "parking-facilities": COMBINED_DATASETS['json_file_car_parking']
@@ -18,7 +19,7 @@ def build_rtree(public_stations, shared_mobility_stations):
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"❌ Error loading {dataset_name}: {e}")
-            continue  # Skip if the file is missing or malformed
+            continue
 
         features = data.get("features", [])
         if not features:
@@ -28,24 +29,29 @@ def build_rtree(public_stations, shared_mobility_stations):
         rtree_idx = index.Index()
         for i, feature in enumerate(features):
             coords = feature.get("geometry", {}).get("coordinates")
-            if coords:  # Ensures coordinates exist before inserting
+            if coords:
                 rtree_idx.insert(i, (coords[0], coords[1], coords[0], coords[1]))
 
         rtree_indices[dataset_name] = rtree_idx
-        
+
+    # --- Public transport points ---
     transport_rtree = index.Index()
     for i, row in public_stations.iterrows():
         transport_rtree.insert(i, (row["longitude"], row["latitude"], row["longitude"], row["latitude"]))
-    
     rtree_indices['public-transport'] = transport_rtree
 
-    rental_modes = ["bike", "escooter", "car"]
-    for mode in rental_modes:
-        # Directly use the filtered data from the `load_shared_mobility_stations` function
-        stations = shared_mobility_stations.get(mode, [])
-        
+    # --- Load combined mobility JSON and build R-trees by mode ---
+    try:
+        with open(COMBINED_SHARED_MOBILITY["json_file_modes"], "r", encoding="utf-8") as f:
+            shared_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"❌ Error loading shared mobility data: {e}")
+        shared_data = {}
+
+    for mode in ["bike", "escooter", "car"]:
+        stations = shared_data.get(mode, [])
         if not stations:
-            print(f"⚠️ Warning: No rental stations found for {mode}. Skipping...")
+            print(f"⚠️ No stations found for mode '{mode}'.")
             continue
 
         rental_rtree = index.Index()

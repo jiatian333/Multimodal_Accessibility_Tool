@@ -164,54 +164,6 @@ def load_public_transport_stations():
     
     return stops_filtered
 
-def load_shared_mobility_stations():
-    """Loads shared mobility providers from local files, filters stations by type, and saves separate JSON files."""
-
-    # Load providers JSON from file
-    with open(RENTAL_PROVIDERS, "r", encoding="utf-8") as f:
-        providers_data = json.load(f)
-    providers_df = pd.DataFrame(providers_data["data"]["providers"])
-    
-    # Normalize vehicle types by checking for keywords
-    def get_mode(vehicle_type):
-        vehicle_type = vehicle_type.lower()  # Ensure lowercase for matching
-        if "bike" in vehicle_type:
-            return "bike"
-        elif "scooter" in vehicle_type:
-            return "escooter"
-        elif "car" in vehicle_type:
-            return "car"
-        return None  # Ignore other vehicle types
-
-    # Assign mode based on vehicle type
-    providers_df["mode"] = providers_df["vehicle_type"].apply(get_mode)
-
-    # Dictionary to store filtered data for each mode
-    mode_stations = {"bike": [], "escooter": [], "car": []}
-    
-    # Load stations JSON from file
-    with open(RENTAL_STATIONS, "r", encoding="utf-8") as f:
-        stations_data = json.load(f)
-    stations_df = pd.DataFrame(stations_data["data"]["stations"])
-    
-    for mode in mode_stations.keys():
-        # Get provider IDs for the current mode
-        provider_ids = set(providers_df[providers_df["mode"] == mode]["provider_id"])
-
-        # Filter stations by provider_id
-        filtered_stations = stations_df[stations_df["provider_id"].isin(provider_ids)]
-
-        # Remove duplicates based on (lat, lon)
-        filtered_stations = filtered_stations.drop_duplicates(subset=["lat", "lon"])
-
-        # Select relevant columns
-        filtered_stations = filtered_stations[["lat", "lon"]]
-
-        # Convert to dictionary format
-        mode_stations[mode] = filtered_stations.to_dict(orient="records")
-
-    return mode_stations
-
 
 def save_to_database(gdf):
     """Saves geodata and metadata (in flat structure) to the database"""

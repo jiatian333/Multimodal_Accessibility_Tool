@@ -81,7 +81,6 @@ def network_travel_times(travel_data, random_points, G, polygon, idx, public_tra
                 if not rental_stored and rental:
                     travel_data = store_rental_station_info(rental_station, destination, travel_time_mode, MODE, travel_data)
                     travel_data = store_closest_rental(travel_data, MODE, destination, nearest, travel_time_walk)
-                    
                 travel_time += travel_time_mode + travel_time_walk
             else:
                 destination = destination[0]

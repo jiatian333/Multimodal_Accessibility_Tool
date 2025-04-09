@@ -10,24 +10,24 @@ os.environ['GDAL_DATA'] = os.path.join(f'{os.sep}'.join(sys.executable.split(os.
 os.environ['OMP_NUM_THREADS'] = '1'  # Limit threads to 1
 
 from travel_times import network_travel_times, point_travel_times
-from update_data import check_for_updates, filter_and_combine_json_files
+from update_data import check_for_updates, filter_and_combine_json_files, process_shared_mobility_data
 from build_r_tree import build_rtree
 from parameter_selection import get_max_radius
 from random_point_selection import generate_adaptive_sample_points, sample_additional_points, generate_radial_grid
-from save_and_load_data import save_data, load_data, save_to_database, load_public_transport_stations, load_shared_mobility_stations
+from save_and_load_data import save_data, load_data, save_to_database, load_public_transport_stations
 from isochrones import generate_isochrones
     
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     
     #check_for_updates()
+    #process_shared_mobility_data()
     filter_and_combine_json_files(["bike-parking", "zurich-bicycles-parking"], COMBINED_DATASETS['json_file_bike_parking'], exclude_name="Motorrad")
     filter_and_combine_json_files(["parking-facilities", "zurich-street-parking", "zurich-public-parking-garages"], COMBINED_DATASETS['json_file_car_parking'], include_art=["Blaue Zone", "Weiss markiert"])
     
     travel_data = load_data()
     public_transport_stations = load_public_transport_stations()
-    rental_locations = load_shared_mobility_stations()
-    idx = build_rtree(public_transport_stations, rental_locations)
+    idx = build_rtree(public_transport_stations)
     
     G = ox.graph_from_place(NETWORK_AREA, network_type="walk")
     city_poly = ox.geocode_to_gdf(CITY_AREA).geometry.union_all()

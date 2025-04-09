@@ -40,23 +40,22 @@ def filter_destinations(destinations, public_modes, rtree_indices, G, travel_dat
                 continue
             nearest = Point(nearest[0].bbox[:2])
             
-        min_distance = nx.shortest_path_length(G, ox.distance.nearest_nodes(G, dest.x, dest.y), ox.distance.nearest_nodes(G, nearest.x, nearest.y), weight='length')
-        weighted_distance = distance_weights(modes, min_distance, mode_priority, max_distance, boost_factor, priority_boost_factor, weight_factor_base)
-        if not weighted_distance:
-            continue
+            min_distance = nx.shortest_path_length(G, ox.distance.nearest_nodes(G, dest.x, dest.y), ox.distance.nearest_nodes(G, nearest.x, nearest.y), weight='length')
+            weighted_distance = distance_weights(modes, min_distance, mode_priority, max_distance, boost_factor, priority_boost_factor, weight_factor_base)
+            if not weighted_distance:
+                continue
+                
+            if weighted_distance < best_weighted_distance:
+                best_weighted_distance = weighted_distance
+                best_destination, best_nearest = dest, nearest
             
-        if weighted_distance < best_weighted_distance:
-            best_weighted_distance = weighted_distance
-            best_destination, best_nearest = dest, nearest
-        
-        if best_weighted_distance == 0:
-            break
+            if best_weighted_distance == 0:
+                break
         
     if not USE_RTREE_SEARCH or not best_destination:
         radius, restriction_type, poi_filter = select_parameters(rental=True)
+        max_distance = base_max_distance * 4  # Less strict maximum distance requirements.
         for dest, modes in zip(destinations, public_modes):
-            max_distance = base_max_distance * 4  # Less strict maximum distance requirements.
-            
             nearest, _ = location_ojp(dest, 1, False, radius, restriction_type, poi_filter)
             if not nearest:
                 continue
@@ -94,12 +93,7 @@ def location_ojp(random_point, num_results, include_pt_modes, radius, restrictio
 def polygon_filter(polygon, modes, destinations):
     filtered = [(dest, modes[i]) for i, dest in enumerate(destinations) if polygon.contains(dest)]
 
-    if filtered:
-        filtered_destinations, filtered_modes = zip(*filtered)
-    else:
-        filtered_destinations, filtered_modes = [], []
-        
-    return filtered_destinations, filtered_modes
+    return zip(*filtered) if filtered else ([], [])
 
 def process_location_request(random_point, radius, restriction_type, poi_filter, polygon, rtree_indices, mode, G, travel_data, num_results=1, rental=False, include_pt_modes=True, public_transport_modes=None):
     destinations, modes, nearest = [], [], None
@@ -116,10 +110,7 @@ def process_location_request(random_point, radius, restriction_type, poi_filter,
                 (public_transport_modes['latitude'] == obj.bbox[1])
             ]
 
-            if not matching_modes.empty:
-                modes.append(matching_modes['transport_modes'].values[0].split('|'))
-            else:
-                modes.append([])
+            modes.append(matching_modes['transport_modes'].values[0].split('|') if not matching_modes.empty else [])
     
     destinations, modes = polygon_filter(polygon, modes, destinations)
         
