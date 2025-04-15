@@ -1,7 +1,11 @@
-import requests
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
 
-def create_trip_request(timestamp, origin, destination, mode_xml, arr=ARR, extension_start='', extension_end='', real_time=True,
+from variables import TEMPLATES_PATH, KEY
+import requests
+
+
+def create_trip_request(timestamp, origin, destination, mode_xml, arr, extension_start='', extension_end='', real_time=True,
                         num_results=2, include_stops=False, include_track_sect=False, include_leg_proj=False, 
                         include_turn_desc=False):
     """
@@ -56,7 +60,7 @@ def create_location_request(timestamp, origin, restriction_type="stop", num_resu
 
     return xml_request
 
-def send_request(xml_request, endpoint=ENDPOINT):
+def send_request(xml_request, endpoint):
     """
     Sends an XML request to the server.
     

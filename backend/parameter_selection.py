@@ -1,4 +1,7 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
+
+from variables import MODE_TEMPLATE, POI_TEMPLATE
 
 def mode_selection(mode):
     """Loads the mode template and replaces the mode placeholder."""
@@ -9,34 +12,43 @@ def mode_selection(mode):
     return mode_xml.replace("${mode}", mode)
     
 
-def select_parameters(rental = False):
+def select_parameters(mode, rental = False):
     """Selects search parameters based on mode or rental requirement."""
     
-    radius = 5000 if MODE == 'walk' or rental else 50000 if MODE in ['self-drive-car', 'car_sharing'] else 15000
+    radius = 5000 if mode == 'walk' or rental else 50000 if mode in ['self-drive-car', 'car_sharing'] else 15000
         
     if rental:
         restriction_type = 'poi'
         with open(POI_TEMPLATE, 'r', encoding='utf-8') as f:
             poi_filter = f.read()  # Read the file as a string
-            poi_filter = poi_filter.replace('${mode}', MODE)
+            poi_filter = poi_filter.replace('${mode}', mode)
     else:
         restriction_type, poi_filter = 'stop', ''
     
     return radius, restriction_type, poi_filter
 
-def get_max_radius(mode):
+def get_max_radius(mode, performance):
     """Returns the maximum radius for a given mode."""
     
-    mode_max_radius = {
-        'walk': 1500,
-        'cycle': 2500,
-        'bicycle_rental': 2500,
-        'escooter_rental': 2500,
-        'self-drive-car': 5000,
-        'car_sharing': 5000 
-    }
-    
-    return mode_max_radius.get(mode, 1000)
+    if performance:
+        return {
+            'walk': 1500,
+            'cycle': 2500,
+            'bicycle_rental': 2500,
+            'escooter_rental': 2500,
+            'self-drive-car': 5000,
+            'car_sharing': 5000 
+        }.get(mode, 1500)
+        
+    else:
+        return {
+        'walk': 5000,
+        'cycle': 5000,
+        'bicycle_rental': 7500,
+        'escooter_rental': 7500,
+        'self-drive-car': 10000,
+        'car_sharing': 10000 
+    }.get(mode, 5000)
 
 def params_distance_calculation(mode):
     mode_priority = {
@@ -46,18 +58,9 @@ def params_distance_calculation(mode):
         'BOAT': 1, 'ELEVATOR': 0, 'UNKNOWN': 0
     }
     
-    base_max_distance = 300 if mode in ['car_sharing', 'self-drive-car'] else 200
+    base_max_distance = 400 if mode in ['car_sharing', 'self-drive-car'] else 300
     boost_factor = 0.05  # 5% extra per additional mode
     priority_boost_factor = 0.1  # 10% per highest priority mode
     weight_factor_base = 0.05  # Adjusts weighting effect
     
     return mode_priority, base_max_distance, boost_factor, priority_boost_factor, weight_factor_base
-
-def r_tree_mode_map():
-    
-    mode_map = {
-        "cycle": "bike-parking", "escooter_rental": "escooter-rental", "bicycle_rental": "bike-rental",
-        "self-drive-car": "parking-facilities", "car_sharing": "car-rental", "public-transport": "public-transport"
-    }
-    
-    return mode_map

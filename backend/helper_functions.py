@@ -1,10 +1,12 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
+
+from variables import TIMESTAMP, ENDPOINT, ARR, USE_RTREE_SEARCH, WALKING_SPEED, WALKING_NETWORK, USE_MODE_WEIGHTING
 from create_send_requests import create_trip_request, send_request, create_location_request
 from parse_response import check_and_decode_trip_response, parse_trip_response, decode_duration, parse_location_response
 from build_r_tree import find_nearest
 from save_and_load_data import get_stored_parking_info, get_stored_closest_rental
-from parameter_selection import select_parameters, params_distance_calculation, r_tree_mode_map
-import time
+from parameter_selection import select_parameters, params_distance_calculation
 from shapely.geometry import Point
 import osmnx as ox
 import networkx as nx
@@ -53,7 +55,7 @@ def filter_destinations(destinations, public_modes, rtree_indices, G, travel_dat
                 break
         
     if not USE_RTREE_SEARCH or not best_destination:
-        radius, restriction_type, poi_filter = select_parameters(rental=True)
+        radius, restriction_type, poi_filter = select_parameters(mode, rental=True)
         max_distance = base_max_distance * 4  # Less strict maximum distance requirements.
         for dest, modes in zip(destinations, public_modes):
             nearest, _ = location_ojp(dest, 1, False, radius, restriction_type, poi_filter)
@@ -180,7 +182,6 @@ def process_and_get_travel_time(start, end, mode_xml, mode, G):
     """Process trip request and return travel time if successful."""
     
     if WALKING_NETWORK and mode == 'walk':
-        print('Using network instead of OJP to determine walking travel time')
         return estimated_walking_time(start, end, G)
     
     if mode in ['car_sharing', 'bicycle_rental', 'escooter_rental']:

@@ -1,7 +1,9 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
+
+from variables import COMBINED_DATASETS, COMBINED_SHARED_MOBILITY
 import json
 from rtree import index
-from parameter_selection import r_tree_mode_map
 
 def build_rtree(public_stations):
     """Builds R-tree indices for parking, public transport, and shared mobility (from combined JSON)."""
@@ -68,7 +70,10 @@ def build_rtree(public_stations):
 def find_nearest(rtree_indices, lon, lat, mode, num_results=5):
     """Finds the nearest locations (parking, rentals, or public transport) based on coordinates and mode."""
     
-    mode_map = r_tree_mode_map()
+    mode_map = {
+        "cycle": "bike-parking", "escooter_rental": "escooter-rental", "bicycle_rental": "bike-rental",
+        "self-drive-car": "parking-facilities", "car_sharing": "car-rental", "public-transport": "public-transport"
+    }
     
     dataset_key = mode_map.get(mode)
     if dataset_key and dataset_key in rtree_indices:

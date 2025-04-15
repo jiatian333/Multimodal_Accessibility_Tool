@@ -1,4 +1,6 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
+
 import cv2
 import numpy as np
 import geopandas as gpd
@@ -20,9 +22,9 @@ def validate_geometry(geom):
         geom = geom.buffer(0)
     return geom if geom.is_valid else make_valid(geom)
 
-def post_processing(isochrones_gdf):
+def post_processing(isochrones_gdf, max_radius, center, network_isochrones):
 
-    # Calculate area and sort by it (smallest first)
+    # Calculate area and sort by it (smallest first as generally more accurate)
     isochrones_gdf["area"] = isochrones_gdf["geometry"].area
     isochrones_gdf.sort_values("area", inplace=True)
 
@@ -41,11 +43,22 @@ def post_processing(isochrones_gdf):
     cleaned_gdf = gpd.GeoDataFrame(processed, columns=["level", "geometry"], crs=isochrones_gdf.crs)
     cleaned_gdf = cleaned_gdf.dissolve(by="level").reset_index()
     cleaned_gdf["geometry"] = cleaned_gdf["geometry"].apply(validate_geometry)
+    
+    if not network_isochrones and center:
+        # Define a buffer around the center point in projected CRS
+        center_point = gpd.GeoSeries([Point(center)], crs="EPSG:4326").to_crs(epsg=2056).iloc[0]
+        circular_mask = center_point.buffer(max_radius)
+        
+        # Clip each isochrone geometry
+        cleaned_gdf["geometry"] = cleaned_gdf["geometry"].intersection(circular_mask)
+        cleaned_gdf["geometry"] = cleaned_gdf["geometry"].apply(validate_geometry)
+    
     cleaned_gdf = cleaned_gdf.to_crs(epsg=4326)
+    cleaned_gdf["geometry"] = cleaned_gdf["geometry"].apply(validate_geometry)
     return cleaned_gdf
 
-def extract_travel_times(travel_data, mode, center):
-    if NETWORK_ISOCHRONES:
+def extract_travel_times(travel_data, mode, center, network_isochrones):
+    if network_isochrones:
         points, times = zip(*[(origin.coords[0], data['travel_time']) for origin, data in travel_data[mode]['isochrones'].items() if isinstance(origin, Point)])
         return np.array(points), np.array(times), None
     if center not in travel_data[mode]['point_isochrones']:
@@ -94,8 +107,8 @@ def extract_contours(level, mask, city_mask_area, isochrones, transform):
         
     return isochrones
 
-def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sigma=3, center=None):
-    points, times, center = extract_travel_times(travel_data, mode, center)
+def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sigma=3, center=None, performance=False, network_isochrones=False, input_station=None):
+    points, times, center = extract_travel_times(travel_data, mode, center, network_isochrones=network_isochrones)
     transform_to = Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
     points = np.array([transform_to.transform(lon, lat) for lon, lat in points])
     if len(points) < 4:
@@ -104,13 +117,24 @@ def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sig
     levels = np.arange(times.min(), times.max() + 1, step=1)
     
     buffer = 250
-    resolution = 1000 if NETWORK_ISOCHRONES else 500
+    resolution = 1000 if network_isochrones else 500
     lon_min, lat_min = points.min(axis=0)
     lon_max, lat_max = points.max(axis=0)
     grid_x, grid_y = np.meshgrid(
         np.linspace(lon_min - buffer, lon_max + buffer, resolution),
         np.linspace(lat_min - buffer, lat_max + buffer, resolution)
     )
+    
+    if performance:
+        buffer_cut = buffer-150
+    else:
+        buffer_cut = buffer
+    
+    grid_extent_x = lon_max - lon_min + 2 * buffer_cut
+    grid_extent_y = lat_max - lat_min + 2 * buffer_cut
+
+    # Radius must be <= half the smaller extent
+    max_radius = min(grid_extent_x, grid_extent_y) / 2
     
     times_min, times_max = times.min(), times.max()
     normalized_times = (times - times_min) / (times_max - times_min)
@@ -146,12 +170,12 @@ def generate_isochrones(travel_data, mode, water_combined, city_poly, smooth_sig
 
     if not isochrones:
         raise ValueError("No isochrones generated. Check data and mask processing.")
-    isochrones_gdf = post_processing(gpd.GeoDataFrame(isochrones, columns=["level", "geometry"], crs="EPSG:2056"))
+    isochrones_gdf = post_processing(gpd.GeoDataFrame(isochrones, columns=["level", "geometry"], crs="EPSG:2056"), max_radius, center, network_isochrones=network_isochrones)
     isochrones_gdf.attrs = {
-        "type": 'network' if NETWORK_ISOCHRONES else 'point',
+        "type": 'network' if network_isochrones else 'point',
         "mode": mode,
         "center": list(center) if center else None,
-        "name": INPUT_STATION if center else 'null'
+        "name": input_station if input_station else 'null'
     }
 
     return isochrones_gdf, center

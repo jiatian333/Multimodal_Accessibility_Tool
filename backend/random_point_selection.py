@@ -1,14 +1,17 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
+
+from variables import SEED, EXTRA_POINTS, BASE_GRID_SIZE, DENSITY
 from calculate_intersections import save_and_load_intersections
 
 import numpy as np
 import geopandas as gpd
 from shapely.ops import unary_union
 from shapely.geometry import Point
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, cKDTree
 from sklearn.cluster import KMeans
 
-def generate_adaptive_sample_points(polygon, water_combined, target_crs, mode=MODE):
+def generate_adaptive_sample_points(polygon, water_combined, target_crs, mode):
     np.random.seed(SEED)
     polygon = gpd.GeoSeries(polygon, crs="EPSG:4326").to_crs(target_crs).iloc[0]
     water_combined = gpd.GeoSeries(water_combined, crs="EPSG:4326").to_crs(target_crs).iloc[0]
@@ -107,6 +110,25 @@ def random_points_in_polygon(polygon, num_points):
         points.extend([p for p in candidates if polygon.contains(p)])
     return points
 
+def filter_close_points(points, min_dist=50):
+    """
+    Filters out points that are closer than `min_dist` (in meters) from each other.
+    Assumes projected CRS (e.g., EPSG:2056) for Euclidean distance.
+    """
+    gdf = gpd.GeoDataFrame(geometry=points, crs="EPSG:4326").to_crs(epsg=2056)
+    coords = np.array([[geom.x, geom.y] for geom in gdf.geometry])
+    tree = cKDTree(coords)
+    mask = np.ones(len(coords), dtype=bool)
+
+    for i in range(len(coords)):
+        if not mask[i]:
+            continue
+        neighbors = tree.query_ball_point(coords[i], r=min_dist)
+        neighbors = [n for n in neighbors if n > i]
+        mask[neighbors] = False
+
+    return list(np.array(points)[mask])
+
 def sample_additional_points(isochrones_gdf, city_polygon, water_combined, n_unsampled=50, n_large_isochrones=50):
     """
     Identify unsampled areas within the city and large uniform isochrones, then sample additional points.
@@ -115,13 +137,11 @@ def sample_additional_points(isochrones_gdf, city_polygon, water_combined, n_uns
     
     additional_points = []
     unsampled_area = extract_unsampled_area(city_polygon, water_combined, isochrones_gdf)
-    if unsampled_area.is_empty:
-        return additional_points
-    
-    areas_to_sample = list(unsampled_area.geoms) if unsampled_area.geom_type == 'MultiPolygon' else [unsampled_area]
-    total_area = sum(area.area for area in areas_to_sample)
-    for area in areas_to_sample:
-        additional_points.extend(random_points_in_polygon(area, int(n_unsampled * (area.area / total_area))))
+    if not unsampled_area.is_empty:
+        areas_to_sample = list(unsampled_area.geoms) if unsampled_area.geom_type == 'MultiPolygon' else [unsampled_area]
+        total_area = sum(area.area for area in areas_to_sample)
+        for area in areas_to_sample:
+            additional_points.extend(random_points_in_polygon(area, int(n_unsampled * (area.area / total_area))))
     
     large_isochrones = identify_large_isochrones(isochrones_gdf)
     if large_isochrones:
@@ -129,9 +149,9 @@ def sample_additional_points(isochrones_gdf, city_polygon, water_combined, n_uns
         for iso in large_isochrones:
             additional_points.extend(random_points_in_polygon(iso, int(n_large_isochrones * (iso.area / total_iso_area))))
     
-    return additional_points
+    return filter_close_points(additional_points, min_dist=150)
 
-def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_crs, mode, num_rings=None, base_points=None, offset_range=None, max_points=50):
+def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_crs, mode, performance, num_rings=None, base_points=None, offset_range=None, max_points=None):
     """
     Generates a radial grid and removes points falling in water bodies.
 
@@ -151,17 +171,20 @@ def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_c
     
     # Adaptive ring count and base points per mode
     if mode == 'walk':
-        num_rings = num_rings or 5
+        num_rings = num_rings or (5 if performance else 8)
         base_points = base_points or 8
         offset_range=offset_range or 50# Denser grid for walking
+        max_points=max_points or (50 if performance else 150)
     elif mode in ['cycle', 'bicycle_rental', 'escooter_rental']:
-        num_rings = num_rings or 6
+        num_rings = num_rings or (6 if performance else 10)
         base_points = base_points or 7
         offset_range=offset_range or 100# Balanced for cycling
+        max_points=max_points or (50 if performance else 200)
     else:
-        num_rings = num_rings or 7
+        num_rings = num_rings or (7 if performance else 12)
         base_points = base_points or 6
-        offset_range=offset_range or 200# Less dense for car
+        offset_range=offset_range or 150# Less dense for car
+        max_points=max_points or (50 if performance else 250)
     
     water_mask = gpd.GeoSeries(water_mask, crs="EPSG:4326").to_crs(target_crs).iloc[0]
     polygon = gpd.GeoSeries(polygon, crs="EPSG:4326").to_crs(target_crs).iloc[0]
@@ -191,9 +214,10 @@ def generate_radial_grid(center_point, polygon, water_mask, max_radius, target_c
             if polygon.contains(new_point) and not water_mask.contains(new_point):
                 selected_points.append(gpd.GeoSeries([new_point], crs=target_crs).to_crs("EPSG:4326").geometry.iloc[0])
     
-    if len(selected_points) > max_points:
+    if len(selected_points) > max_points-1:
         points_array = np.array([(p.x, p.y) for p in selected_points])
-        kmeans = KMeans(n_clusters=max_points, random_state=42, n_init=10).fit(points_array)
+        kmeans = KMeans(n_clusters=max_points-1, random_state=SEED, n_init=10).fit(points_array)
         selected_points = [Point(x, y) for x, y in kmeans.cluster_centers_]
     
+    selected_points.append(center_point)
     return selected_points

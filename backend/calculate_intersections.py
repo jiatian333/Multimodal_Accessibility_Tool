@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
-from variables import DENSITY, NETWORK_AREA
 
+from variables import CITY_AREA
 import pickle
 import os
 import numpy as np
@@ -55,7 +55,7 @@ def calculate_intersections_per_grid(graph, nodes, polygon, water_combined, grid
     return total_grid_intersections
 
 
-def save_and_load_intersections(mode, target_crs, polygon, water_combined, grid_size=500, filename=DENSITY):
+def save_and_load_intersections(mode, target_crs, polygon, water_combined, grid_size, filename):
     """
     Load or save the intersection density calculations to a pickle file.
     
@@ -80,7 +80,7 @@ def save_and_load_intersections(mode, target_crs, polygon, water_combined, grid_
     
     intersection_density_dict.setdefault(mode, {})
     
-    graph = ox.graph_from_place(NETWORK_AREA, network_type=mode)
+    graph = ox.graph_from_place(CITY_AREA, network_type=mode)
     nodes, _ = ox.graph_to_gdfs(graph)
     nodes = nodes.to_crs(target_crs)
     

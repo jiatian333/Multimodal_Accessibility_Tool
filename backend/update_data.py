@@ -1,5 +1,7 @@
-from variables import *
+#!/usr/bin/env python
+# coding: utf-8
 
+from variables import DATASETS, DATASETS_STATIC, TIMESTAMP_FILE, SHARED_TIMESTAMP_FILE, SHARED_MOBILITY_FEEDS, GBFS_MASTER_URL, COMBINED_SHARED_MOBILITY
 import requests
 import os
 import json

@@ -3,7 +3,7 @@
     <OJPRequest>
         <ServiceRequest>
             <RequestTimestamp>${timestamp}</RequestTimestamp>
-            <RequestorRef>ojpch-performance-test</RequestorRef>
+            <RequestorRef>semester-project</RequestorRef>
             <ojp:OJPTripRequest>
                 <RequestTimestamp>${timestamp}</RequestTimestamp>
                 <ojp:Origin>
