@@ -25,7 +25,7 @@
     }
 
     #map {
-      height: 500px;
+      height: calc(100vh - 140px);
       width: 100%;
       border: 4px solid #ccc;
       border-radius: 10px;
@@ -60,15 +60,6 @@
     .description {
       font-size: 0.95rem;
       margin-bottom: 20px;
-    }
-
-    .reference {
-      font-size: 0.8rem;
-      color: #777;
-      margin-top: 60px;
-      text-align: center;
-      padding-top: 10px;
-      font-style: italic;
     }
 
     .popup-overlay {
@@ -143,6 +134,19 @@
     z-index: 1000;
     pointer-events: none;
   }
+    .info-button {
+    position: absolute;
+    top: 180px;
+    right: 10px; /* links vom LayerControl */
+    z-index: 1001;
+    font-size: 10px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    cursor: pointer;
+  }
 
   </style>
 </head>
@@ -158,69 +162,42 @@
     </div>
   </div>
 
-  <h1>Welcome to 15-min city</h1>
+  <h1>Last-Mile Connectivity Analysis of Zurich</h1>
 
   <div class="container-fluid">
     <div class="row">
-      <div class="col-md-3 sidebar">
+      <div class="col-md-2 sidebar">
         <div class="description">
-          <p>
-            The map visualizes travel times from various locations to their nearest public transport station - so called isochrones, helping planners easily identify areas where additional stations might be needed.
-          </p>
-          <p>
-            If you wish to check the isochrone map around a specific station, please enter the station name below.
-          </p>
+          <div id="staticText">
+            <p>
+              The map visualizes travel times from various locations to their nearest public transport station – so called isochrones, helping planners easily identify areas where additional stations might be needed.
+            </p>
+            <p>
+              If you wish to check the isochrone map around a specific station, please switch to the dynamic version.
+            </p>
+          </div>
+        
+          <div id="dynamicText" style="display: none;">
+            <p>
+              Now you are at the dynamic version of isochrones. Please enter a station name to see its surrounding isochrones.
+            </p>
+          </div>
         </div>
 
-        <input type="text" id="stationInput" placeholder="please enter station name">
+        <form autocomplete="off">
+          <input type="text" id="stationInput" list="stationSuggestions" placeholder="please enter station name" class="form-control">
+          <datalist id="stationSuggestions"></datalist>
+        </form>
+        <datalist id="stationSuggestions"></datalist>
         <button id="showIsochroneBtn">show station isochrone</button>
       </div>
-      <div class="col-md-9">
+      <div class="col-md-10">
         <div id="map" style="position: relative;">
           <img src="north-arrow-2.svg" alt="Nordpfeil", class="pfeil">
-          <div class="isochrone-legend">
-            <strong>Isochrone Color:</strong>
-            <div class="isochrone-legend-item">
-              <div class="isochrone-legend-color" style="background-color: red;"></div>10–15 min
-            </div>
-            <div class="isochrone-legend-item">
-              <div class="isochrone-legend-color" style="background-color: orange;"></div>5–10 min
-            </div>
-            <div class="isochrone-legend-item">
-              <div class="isochrone-legend-color" style="background-color: #66cc66;"></div>0–5 min
-            </div>
-            <hr style="margin: 8px 0;">
-            <strong>Station Type:</strong>
-            <div class="isochrone-legend-item">
-              <div class="isochrone-legend-color" style="
-                background-color: #dddd00;
-                border: 3.5px solid #006400;
-                opacity: 0.5;
-                width: 10px;
-                height: 10px;
-                border-radius: 50%;
-              "></div>
-              Bus Station
-            </div>
-            <div class="isochrone-legend-item">
-              <div class="isochrone-legend-color" style="
-                background-color: #dddddd;
-                border: 3.5px solid #005577;
-                opacity: 0.5;
-                width: 10px;
-                height: 10px;
-                border-radius: 50%;
-              "></div>
-              Train Station
-            </div>
-          </div>
+          <button id="infoBtn" class="info-button">What are the modes?</button>
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="reference">
-    15 min project FS 2025 &mdash; Nick Teutschmann, Jiaan Tian
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
@@ -240,7 +217,32 @@
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
-      CQL_FILTER: "mode='walk' AND type='network'"
+      CQL_FILTER: "mode='walk' AND type='network'",
+      opacity: 0.7
+    });
+    const wmsLayerescooterrental_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='escooter_rental' AND type='network'",
+      opacity: 0.7
+    });
+    const wmsLayercarsharing_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='car_sharing' AND type='network'",
+      opacity: 0.7
+    });
+    const wmsLayerbicyclerental_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='bicycle_rental' AND type='network'",
+      opacity: 0.7
     });
   
     const wmsLayercycle_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
@@ -248,40 +250,101 @@
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
-      CQL_FILTER: "mode='cycle' AND type='network'"
+      CQL_FILTER: "mode='cycle' AND type='network'",
+      opacity: 0.7
     });
   
-    const wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+
+
+
+
+    let wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
-      CQL_FILTER: "mode='walk' AND type='point'"
+      CQL_FILTER: "mode='walk' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
     });
-  
-    const wmsLayercycle_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+    let wmsLayerselfdrivecar_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
-      CQL_FILTER: "mode='cycle' AND type='point'"
+      CQL_FILTER: "mode='self-drive-car' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
+    });
+
+    let wmsLayerescooterrental_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='escooter_rental' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
+    });
+
+    let wmsLayercar_sharing_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='car_sharing' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
+    });
+
+    let wmsLayerbicyclerental_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='bicycle_rental' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
+    });
+
+  
+    let wmsLayercycle_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='cycle' AND type='point' AND name='Stettbach'",
+      opacity: 0.7
     });
   
-    const busLayerGroup = L.layerGroup().addTo(map);
+
+  
+    // GeoServer WFS train_stations (aktiv)
     const trainLayerGroup = L.layerGroup().addTo(map);
-    let markers = [];
     const stationLookup = {};
-    let busLoaded = false;
+    const allStationNames = [];
     let trainLoaded = false;
+    let lastHighlightedMarker = null;
   
     function enableSearchIfReady() {
-      if (busLoaded && trainLoaded) {
+      if (trainLoaded) {
         document.getElementById("showIsochroneBtn").addEventListener("click", function () {
           const input = document.getElementById("stationInput").value.trim().toLowerCase();
           if (stationLookup[input]) {
             const marker = stationLookup[input];
             const latlng = marker.getLatLng();
-            map.setView(latlng, 12);
+  
+            if (lastHighlightedMarker && lastHighlightedMarker !== marker) {
+              lastHighlightedMarker.setStyle({
+                color: lastHighlightedMarker.options.originalColor,
+                fillColor: lastHighlightedMarker.options.originalColor,
+                radius: lastHighlightedMarker.options.originalRadius
+              });
+            }
+  
+            marker.setStyle({
+              color: 'red',
+              fillColor: 'red',
+              radius: 6
+            });
+  
+            lastHighlightedMarker = marker;
+            map.setView(latlng, 16);
             marker.openPopup();
           } else {
             alert("Not a valid station name.");
@@ -290,6 +353,67 @@
       }
     }
   
+    // ✅ GeoServer WFS-Request für train_stations
+    fetch("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=GMP_15_Min_City:train_stations&outputFormat=application/json")
+      .then(res => res.json())
+      .then(data => {
+        L.geoJSON(data, {
+          pointToLayer: function (feature, latlng) {
+            const marker = L.circleMarker(latlng, {
+              radius: 2,           
+              color: '#000000',        
+              opacity: 0.7, 
+              fillOpacity: 0.7,
+              weight: 1 
+            });
+            marker.options.originalColor = '#000000';
+            marker.options.originalRadius = 2;
+
+            return marker;
+          },
+          onEachFeature: function (feature, layer) {
+            const name = feature.properties.name;
+            if (name) {
+              layer.bindPopup(`<b>${name}</b>`);
+              stationLookup[name.toLowerCase()] = layer;
+              allStationNames.push(name);
+              layer.on('mouseover', function (e) {
+                this.openPopup();
+              });
+              layer.on('mouseout', function (e) {
+                this.closePopup();
+              });
+            }
+          }
+        }).addTo(trainLayerGroup);
+        trainLoaded = true;
+        enableSearchIfReady();
+        document.getElementById("stationInput").addEventListener("input", function () {
+          const input = this.value.toLowerCase();
+          const suggestions = allStationNames.filter(name =>
+            name.toLowerCase().startsWith(input)
+          );
+
+          const datalist = document.getElementById("stationSuggestions");
+          datalist.innerHTML = ""; 
+
+          suggestions.forEach(name => {
+            const option = document.createElement("option");
+            option.value = name;
+            datalist.appendChild(option);
+          });
+        });
+      });
+  
+    // 🟨 Alte CSV-Daten für Train + Bus (auskommentiert)
+  /*
+    const busLayerGroup = L.layerGroup().addTo(map);
+    const trainLayerGroup = L.layerGroup().addTo(map);
+    let markers = [];
+    const stationLookup = {};
+    let busLoaded = false;
+    let trainLoaded = false;
+  
     d3.csv("./data/bus_stations.csv", function (error, data) {
       if (error) throw error;
       data.forEach(function (d) {
@@ -297,12 +421,15 @@
         let lon = parseFloat(d.longitude);
         if (!isNaN(lat) && !isNaN(lon)) {
           let marker = L.circleMarker([lat, lon], {
-            radius: 3,
-            color: '#007bff',
-            fillColor: '#007bff',
-            fillOpacity: 0.8,
+            radius: 2,
+            color: '#000000',
+            fillColor: '#000000',
+            opacity: 0.6,  
+            fillOpacity: 0.6,
             weight: 1
           }).bindPopup(`<b>${d.name}</b>`).addTo(busLayerGroup);
+          marker.options.originalColor = '#000000';
+          marker.options.originalRadius = 3;
           markers.push(marker);
           stationLookup[d.name.toLowerCase()] = marker;
         }
@@ -318,12 +445,15 @@
         let lon = parseFloat(d.longitude);
         if (!isNaN(lat) && !isNaN(lon)) {
           let marker = L.circleMarker([lat, lon], {
-            radius: 3,
-            color: '#ff6600',
-            fillColor: '#ff6600',
-            fillOpacity: 0.8,
+            radius: 2,
+            color: '#42160A',
+            fillColor: '#42160A',
+            opacity: 0.6,  
+            fillOpacity: 0.6,
             weight: 1
           }).bindPopup(`<b>${d.name}</b>`).addTo(trainLayerGroup);
+          marker.options.originalColor = '#42160A';
+          marker.options.originalRadius = 3;
           markers.push(marker);
           stationLookup[d.name.toLowerCase()] = marker;
         }
@@ -331,50 +461,80 @@
       trainLoaded = true;
       enableSearchIfReady();
     });
+  */
   
-    // LayerControls
+    // LayerControls (nur Train Stations)
     const layersControlStatic = L.control.layers({
-  "Car": cartoLayer,
-  "Bike": wmsLayercycle_static,
-  "Walk": wmsLayerwalk_static
-}, {
-  "Bus Stations": busLayerGroup,
-  "Train Stations": trainLayerGroup
-}, { collapsed: false });
+      "Car Sharing ": wmsLayercarsharing_static,
+      "Self-Drive Car": wmsLayercycle_static,
+      "Cycle": wmsLayercycle_static,
+      "Walk": wmsLayerwalk_static,
+      "Bicycle Rental": wmsLayerbicyclerental_static,
+      "eScooter Rental": wmsLayerescooterrental_static,
+    }, {
+      "Train Stations": trainLayerGroup
+    }, { collapsed: false });
   
     const layersControlDynamic = L.control.layers({
-  "Car": cartoLayer,
-  "Bike": wmsLayercycle_dynamic,
-  "Walk": wmsLayerwalk_dynamic
-}, {
-  "Bus Stations": busLayerGroup,
-  "Train Stations": trainLayerGroup
-}, { collapsed: false });
-
+      "Car Sharing": wmsLayercar_sharing_dynamic,
+      "Self-Drive Car": wmsLayerselfdrivecar_dynamic,
+      "Cycle": wmsLayercycle_dynamic,
+      "Walk": wmsLayerwalk_dynamic,
+      "Bicycle Rental": wmsLayerbicyclerental_dynamic,
+      "eScooter Rental": wmsLayerescooterrental_dynamic,
+    }, {
+      "Train Stations": trainLayerGroup
+    }, { collapsed: false });
   
     layersControlStatic.addTo(map);
   
-    // Dropdown UI
+    // UI
+    const switchWrapper = document.createElement("div");
+    switchWrapper.className = "mt-3"; 
+
+    const label = document.createElement("label");
+    label.innerText = "Isochrones Mode Selection";
+    label.className = "form-label"; 
+
     const dropdown = document.createElement("select");
-    dropdown.className = "form-select mt-2";
+    dropdown.className = "form-select";
     dropdown.innerHTML = `
       <option value="static">Static</option>
       <option value="dynamic">Dynamic</option>
     `;
-    document.querySelector(".sidebar").prepend(dropdown);
+
+    switchWrapper.appendChild(label);
+    switchWrapper.appendChild(dropdown);
+    document.querySelector(".description").appendChild(switchWrapper);
   
-    // Sichtbarkeit steuern
+    const legendImg = document.createElement("img");
+    legendImg.src = "https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER=GMP_15_Min_City:geodata&STYLE=try%20new%20style&WIDTH=20&HEIGHT=20";
+    legendImg.alt = "Isochrone Legende";
+    legendImg.style = "border: 1px solid #ccc; background: white; padding: 3px; margin-top: 15px; border-radius: 5px; max-width: 150%;";
+    document.querySelector(".sidebar").appendChild(legendImg);
+  
     const stationInput = document.getElementById("stationInput");
     const showBtn = document.getElementById("showIsochroneBtn");
   
     function toggleMode(mode) {
-  // Alle Layer, die wir managen wollen
-  const allStaticLayers = [cartoLayer, wmsLayercycle_static, wmsLayerwalk_static];
-  const allDynamicLayers = [wmsLayercycle_dynamic, wmsLayerwalk_dynamic];
-  const overlays = [busLayerGroup, trainLayerGroup];
+  const allStaticLayers = [
+    wmsLayercarsharing_static,
+    wmsLayercycle_static,
+    wmsLayerwalk_static,
+    wmsLayerbicyclerental_static,
+    wmsLayerescooterrental_static
+  ];
 
-  // Alles vorher aus der Karte entfernen
-  [...allStaticLayers, ...allDynamicLayers, ...overlays].forEach(layer => {
+  const allDynamicLayers = [
+  wmsLayercar_sharing_dynamic,
+  wmsLayercycle_dynamic,
+  wmsLayerwalk_dynamic,
+  wmsLayerescooterrental_dynamic,
+  wmsLayerbicyclerental_dynamic,
+  wmsLayerselfdrivecar_dynamic 
+];
+
+  [...allStaticLayers, ...allDynamicLayers].forEach(layer => {
     if (map.hasLayer(layer)) {
       map.removeLayer(layer);
     }
@@ -385,16 +545,19 @@
     showBtn.style.display = "none";
     map.removeControl(layersControlDynamic);
     layersControlStatic.addTo(map);
-    // Optional: Standardlayer aktivieren
+    wmsLayerwalk_static.addTo(map); // Startlayer
     cartoLayer.addTo(map);
+
   } else {
     stationInput.style.display = "block";
     showBtn.style.display = "block";
     map.removeControl(layersControlStatic);
     layersControlDynamic.addTo(map);
-    // Optional: Standardlayer aktivieren
-    wmsLayerwalk_dynamic.addTo(map);
+    wmsLayerwalk_dynamic.addTo(map); // Startlayer
   }
+
+  document.getElementById("staticText").style.display = (mode === "static") ? "block" : "none";
+  document.getElementById("dynamicText").style.display = (mode === "dynamic") ? "block" : "none";
 }
   
     dropdown.addEventListener("change", (e) => {
@@ -402,10 +565,31 @@
     });
   
     toggleMode("static");
-  
-  
     L.control.scale().addTo(map);
+
+
+  const modeInfoHTML = `
+    <div id="modeInfoOverlay" class="popup-overlay" style="display: none;">
+      <div class="popup-content">
+        <h3>Transport Mode Info</h3>
+        <ul style="text-align: left; padding-left: 1rem;">
+          <li><strong>Walk:</strong> Moving on foot.</li>
+          <li><strong>Cycle:</strong> Riding your own bike.</li>
+          <li><strong>Bicycle Rental:</strong> Renting a bike at a station.</li>
+          <li><strong>Car Sharing:</strong> Shared-use car you rent by the hour – no ownership needed.</li>
+          <li><strong>Self-Drive Car:</strong> Car owned by yourself.</li>
+          <li><strong>eScooter Rental:</strong> Renting an electric scooter at a station.</li>
+        </ul>
+        <button onclick="document.getElementById('modeInfoOverlay').style.display='none'">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modeInfoHTML);
+  document.getElementById("infoBtn").addEventListener("click", function () {
+  document.getElementById("modeInfoOverlay").style.display = "flex";
+});
   </script>
+  
   
   
 </body>
