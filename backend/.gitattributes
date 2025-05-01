@@ -1,0 +1,64 @@
+#================================#
+#      Cross-Platform Setup      #
+#================================#
+
+# Enforce Unix-style line endings on all platforms (including Windows)
+* text=auto eol=lf
+
+# Ensure Python and config files use UTF-8 with LF endings
+*.py  text eol=lf charset=utf-8
+*.xml text eol=lf charset=utf-8
+*.md  text eol=lf charset=utf-8
+*.txt text eol=lf charset=utf-8
+*.env text eol=lf charset=utf-8
+*.json text eol=lf charset=utf-8
+*.csv text eol=lf charset=utf-8
+*.ipynb text eol=lf charset=utf-8
+
+# Prevent CRLF issues for notebooks
+*.ipynb text eol=lf
+
+#================================#
+#     GitHub Language Hints      #
+#================================#
+
+# Explicitly set primary languages
+*.py      linguist-language=Python
+*.ipynb   linguist-language=Jupyter Notebook
+*.xml     linguist-language=XML
+
+# Treat datasets and templates as vendor/generated
+data/**       linguist-vendored
+cache/**      linguist-vendored
+templates/**  linguist-generated
+*.json        linguist-vendored
+*.csv         linguist-vendored
+*.pkl         linguist-vendored
+*.txt         linguist-vendored
+
+#================================#
+#        Git LFS Storage         #
+#================================#
+
+# Handle large data directories with Git LFS
+cache/**                       filter=lfs diff=lfs merge=lfs -text
+data/intersections/**          filter=lfs diff=lfs merge=lfs -text
+data/public_transit/**         filter=lfs diff=lfs merge=lfs -text
+data/parking/**                filter=lfs diff=lfs merge=lfs -text
+data/shared_mobility/**        filter=lfs diff=lfs merge=lfs -text
+
+#================================#
+#     Binary / Non-Text Files    #
+#================================#
+
+# Mark binaries to avoid diffing/line ending issues
+*.pkl binary
+*.log binary
+*.bak binary
+
+#================================#
+#     Jupyter Notebook UX        #
+#================================#
+
+# Allow safer merging of notebooks
+*.ipynb merge=union
