@@ -148,6 +148,31 @@
     cursor: pointer;
   }
 
+
+  .dropdown-block {
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #f8f9fa; /* leichtes Grau */
+    margin-top: 15px;
+  }
+
+  .dropdown-block label {
+    font-weight: bold;
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .dropdown-block select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+  }
+
+
   </style>
 </head>
 <body>
@@ -189,7 +214,8 @@
           <datalist id="stationSuggestions"></datalist>
         </form>
         <datalist id="stationSuggestions"></datalist>
-        <button id="showIsochroneBtn">show station isochrone</button>
+        <button id="showIsochroneBtn">Show station isochrone</button>
+        <div id="legendContainer"></div>
       </div>
       <div class="col-md-10">
         <div id="map" style="position: relative;">
@@ -213,15 +239,34 @@
     }).addTo(map);
   
     const wmsLayerwalk_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
       CQL_FILTER: "mode='walk' AND type='network'",
       opacity: 0.7
     });
+
+    const wmsLayercycle_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata_cycle",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='cycle' AND type='network'",
+      opacity: 0.7
+    });
+
+    const wmsLayerbicyclerental_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata_bicycle_rental",
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: "mode='bicycle_rental' AND type='network'",
+      opacity: 0.7
+    });
+
     const wmsLayerescooterrental_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_escooter_rental",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -229,37 +274,29 @@
       opacity: 0.7
     });
     const wmsLayercarsharing_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_car_sharing",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
       CQL_FILTER: "mode='car_sharing' AND type='network'",
       opacity: 0.7
     });
-    const wmsLayerbicyclerental_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+
+    const wmsLayerselfdrivecar_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: "GMP_15_Min_City:geodata_self_drive_car",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
-      CQL_FILTER: "mode='bicycle_rental' AND type='network'",
+      CQL_FILTER: "mode='self-drive-car' AND type='network'",
       opacity: 0.7
     });
-  
-    const wmsLayercycle_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
-      format: "image/png",
-      transparent: true,
-      attribution: "© GeoServer",
-      CQL_FILTER: "mode='cycle' AND type='network'",
-      opacity: 0.7
-    });
-  
+   
 
 
 
 
     let wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -267,7 +304,7 @@
       opacity: 0.7
     });
     let wmsLayerselfdrivecar_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_self_drive_car",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -276,7 +313,7 @@
     });
 
     let wmsLayerescooterrental_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_escooter_rental",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -285,7 +322,7 @@
     });
 
     let wmsLayercar_sharing_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_car_sharing",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -294,7 +331,7 @@
     });
 
     let wmsLayerbicyclerental_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_bicycle_rental",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -304,7 +341,7 @@
 
   
     let wmsLayercycle_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: "GMP_15_Min_City:geodata",
+      layers: "GMP_15_Min_City:geodata_cycle",
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -344,8 +381,14 @@
             });
   
             lastHighlightedMarker = marker;
-            map.setView(latlng, 16);
+            map.flyTo(latlng, 13);
             marker.openPopup();
+            if (dropdown.value === "dynamic") {
+              const stationName = allStationNames.find(name => name.toLowerCase() === input);
+              if (stationName) {
+                updateDynamicLayersForStation(stationName);
+              }
+            }
           } else {
             alert("Not a valid station name.");
           }
@@ -357,19 +400,33 @@
     fetch("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=GMP_15_Min_City:train_stations&outputFormat=application/json")
       .then(res => res.json())
       .then(data => {
-        L.geoJSON(data, {
+        const visibleLayer = L.geoJSON(data, {
           pointToLayer: function (feature, latlng) {
             const marker = L.circleMarker(latlng, {
-              radius: 2,           
-              color: '#000000',        
-              opacity: 0.7, 
+              radius: 2,
+              color: '#000000',
+              fillColor: '#000000',
+              opacity: 0.7,
               fillOpacity: 0.7,
-              weight: 1 
+              weight: 1
             });
             marker.options.originalColor = '#000000';
             marker.options.originalRadius = 2;
-
             return marker;
+          }
+        });
+
+        // Unsichtbarer Layer für Interaktion
+        const invisibleLayer = L.geoJSON(data, {
+          pointToLayer: function (feature, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 10, // größerer Interaktionsbereich
+              color: '#00000000', // vollständig transparent
+              fillColor: '#00000000',
+              fillOpacity: 0.0,
+              opacity: 0.0,
+              weight: 0
+            });
           },
           onEachFeature: function (feature, layer) {
             const name = feature.properties.name;
@@ -377,25 +434,40 @@
               layer.bindPopup(`<b>${name}</b>`);
               stationLookup[name.toLowerCase()] = layer;
               allStationNames.push(name);
-              layer.on('mouseover', function (e) {
+
+              layer.on('mouseover', function () {
                 this.openPopup();
               });
-              layer.on('mouseout', function (e) {
+              layer.on('mouseout', function () {
                 this.closePopup();
+              });
+              layer.on('click', function () {
+                document.getElementById("stationInput").value = name;
+                document.getElementById("showIsochroneBtn").click();
               });
             }
           }
-        }).addTo(trainLayerGroup);
+        });
+
+        visibleLayer.addTo(trainLayerGroup);
+        invisibleLayer.addTo(trainLayerGroup);
         trainLoaded = true;
         enableSearchIfReady();
         document.getElementById("stationInput").addEventListener("input", function () {
           const input = this.value.toLowerCase();
+
+          // Wenn exakt ein Eintrag gewählt wurde → keine Vorschläge mehr anzeigen
+          if (allStationNames.some(name => name.toLowerCase() === input)) {
+            document.getElementById("stationSuggestions").innerHTML = "";
+            return;
+          }
+
           const suggestions = allStationNames.filter(name =>
             name.toLowerCase().startsWith(input)
           );
 
           const datalist = document.getElementById("stationSuggestions");
-          datalist.innerHTML = ""; 
+          datalist.innerHTML = "";
 
           suggestions.forEach(name => {
             const option = document.createElement("option");
@@ -465,17 +537,17 @@
   
     // LayerControls (nur Train Stations)
     const layersControlStatic = L.control.layers({
-      "Car Sharing ": wmsLayercarsharing_static,
-      "Self-Drive Car": wmsLayercycle_static,
-      "Cycle": wmsLayercycle_static,
       "Walk": wmsLayerwalk_static,
+      "Cycle": wmsLayercycle_static,
       "Bicycle Rental": wmsLayerbicyclerental_static,
-      "eScooter Rental": wmsLayerescooterrental_static,
+      "E-scooter Rental": wmsLayerescooterrental_static,
+      "Car Sharing ": wmsLayercarsharing_static,
+      "Self-Drive Car": wmsLayerselfdrivecar_static,
     }, {
       "Train Stations": trainLayerGroup
     }, { collapsed: false });
   
-    const layersControlDynamic = L.control.layers({
+    /*let layersControlDynamic = L.control.layers({
       "Car Sharing": wmsLayercar_sharing_dynamic,
       "Self-Drive Car": wmsLayerselfdrivecar_dynamic,
       "Cycle": wmsLayercycle_dynamic,
@@ -485,19 +557,21 @@
     }, {
       "Train Stations": trainLayerGroup
     }, { collapsed: false });
-  
-    layersControlStatic.addTo(map);
+  */
+    let layersControlDynamic = L.control.layers({}, {
+    "Train Stations": trainLayerGroup
+  }, { collapsed: false });
+      layersControlStatic.addTo(map);
   
     // UI
     const switchWrapper = document.createElement("div");
-    switchWrapper.className = "mt-3"; 
+    switchWrapper.className = "dropdown-block"; 
 
     const label = document.createElement("label");
     label.innerText = "Isochrones Mode Selection";
-    label.className = "form-label"; 
 
     const dropdown = document.createElement("select");
-    dropdown.className = "form-select";
+    dropdown.className = "form-select"; 
     dropdown.innerHTML = `
       <option value="static">Static</option>
       <option value="dynamic">Dynamic</option>
@@ -506,59 +580,74 @@
     switchWrapper.appendChild(label);
     switchWrapper.appendChild(dropdown);
     document.querySelector(".description").appendChild(switchWrapper);
+
   
-    const legendImg = document.createElement("img");
-    legendImg.src = "https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER=GMP_15_Min_City:geodata&STYLE=try%20new%20style&WIDTH=20&HEIGHT=20";
-    legendImg.alt = "Isochrone Legende";
-    legendImg.style = "border: 1px solid #ccc; background: white; padding: 3px; margin-top: 15px; border-radius: 5px; max-width: 150%;";
-    document.querySelector(".sidebar").appendChild(legendImg);
+    const legendContainer = document.createElement("div");
+    legendContainer.id = "legendContainer";
+    legendContainer.style = "margin-top: 15px;";
+    document.querySelector(".sidebar").appendChild(legendContainer);
   
     const stationInput = document.getElementById("stationInput");
     const showBtn = document.getElementById("showIsochroneBtn");
   
     function toggleMode(mode) {
-  const allStaticLayers = [
-    wmsLayercarsharing_static,
-    wmsLayercycle_static,
-    wmsLayerwalk_static,
-    wmsLayerbicyclerental_static,
-    wmsLayerescooterrental_static
-  ];
+      const allStaticLayers = [
+        wmsLayercarsharing_static,
+        wmsLayercycle_static,
+        wmsLayerwalk_static,
+        wmsLayerbicyclerental_static,
+        wmsLayerescooterrental_static,
+        wmsLayerselfdrivecar_static
+      ];
 
-  const allDynamicLayers = [
-  wmsLayercar_sharing_dynamic,
-  wmsLayercycle_dynamic,
-  wmsLayerwalk_dynamic,
-  wmsLayerescooterrental_dynamic,
-  wmsLayerbicyclerental_dynamic,
-  wmsLayerselfdrivecar_dynamic 
-];
+      const allDynamicLayers = [
+      wmsLayercar_sharing_dynamic,
+      wmsLayercycle_dynamic,
+      wmsLayerwalk_dynamic,
+      wmsLayerescooterrental_dynamic,
+      wmsLayerbicyclerental_dynamic,
+      wmsLayerselfdrivecar_dynamic 
+    ];
 
-  [...allStaticLayers, ...allDynamicLayers].forEach(layer => {
-    if (map.hasLayer(layer)) {
-      map.removeLayer(layer);
+      [...allStaticLayers, ...allDynamicLayers].forEach(layer => {
+        if (map.hasLayer(layer)) {
+          map.removeLayer(layer);
+        }
+      });
+
+      if (mode === "static") {
+        stationInput.style.display = "none";
+        showBtn.style.display = "none";
+        map.eachLayer(layer => {
+          if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
+            map.removeLayer(layer);
+          }
+        });
+        map.removeControl(layersControlDynamic);
+        layersControlStatic.addTo(map);
+        wmsLayerwalk_static.addTo(map); // Startlayer
+        cartoLayer.addTo(map);
+
+      } else {
+        stationInput.style.display = "block";
+        showBtn.style.display = "block";
+        map.removeControl(layersControlStatic);
+        layersControlDynamic.addTo(map);
+        //wmsLayerwalk_dynamic.addTo(map); // Startlayer
+      }
+
+      document.getElementById("staticText").style.display = (mode === "static") ? "block" : "none";
+      document.getElementById("dynamicText").style.display = (mode === "dynamic") ? "block" : "none";
+
     }
-  });
 
-  if (mode === "static") {
-    stationInput.style.display = "none";
-    showBtn.style.display = "none";
-    map.removeControl(layersControlDynamic);
-    layersControlStatic.addTo(map);
-    wmsLayerwalk_static.addTo(map); // Startlayer
-    cartoLayer.addTo(map);
-
-  } else {
-    stationInput.style.display = "block";
-    showBtn.style.display = "block";
-    map.removeControl(layersControlStatic);
-    layersControlDynamic.addTo(map);
-    wmsLayerwalk_dynamic.addTo(map); // Startlayer
-  }
-
-  document.getElementById("staticText").style.display = (mode === "static") ? "block" : "none";
-  document.getElementById("dynamicText").style.display = (mode === "dynamic") ? "block" : "none";
-}
+    function detectLegendFromLayer(layer) {
+      if (layer && layer.options && layer.options.layers) {
+        const fullLayerName = layer.options.layers; // z. B. "GMP_15_Min_City:geodata_walk"
+        const shortLayerName = fullLayerName.split(":")[1]; // "geodata_walk"
+        showLegendForLayer(shortLayerName);
+      }
+    }
   
     dropdown.addEventListener("change", (e) => {
       toggleMode(e.target.value);
@@ -566,6 +655,9 @@
   
     toggleMode("static");
     L.control.scale().addTo(map);
+    map.on('baselayerchange', function (e) {
+      detectLegendFromLayer(e.layer);
+    });
 
 
   const modeInfoHTML = `
@@ -588,6 +680,67 @@
   document.getElementById("infoBtn").addEventListener("click", function () {
   document.getElementById("modeInfoOverlay").style.display = "flex";
 });
+
+function showLegendForLayer(layerName) {
+  const legendUrl = `https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms?service=WMS&version=1.1.0&request=GetLegendGraphic&format=image/png&layer=GMP_15_Min_City:${layerName}`;
+
+  const legendContainer = document.getElementById("legendContainer");
+  legendContainer.innerHTML = ""; // vorherige Legende löschen
+
+  const img = document.createElement("img");
+  img.src = legendUrl;
+  img.alt = `Legend for ${layerName}`;
+  img.style = "max-width: 100%; margin-top: 10px; border: 1px solid #ccc; background: white; padding: 5px; border-radius: 4px;";
+
+  legendContainer.appendChild(img);
+}
+showLegendForLayer("geodata_escooter_rental");
+
+
+function updateDynamicLayersForStation(stationName) {
+  const makeLayer = (mode, layerId) => {
+    return L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: `GMP_15_Min_City:${layerId}`,
+      format: "image/png",
+      transparent: true,
+      attribution: "© GeoServer",
+      CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
+      opacity: 0.7
+    });
+  };
+
+  const newLayers = {
+    "Walk": makeLayer("walk", "geodata_walk"),
+    "Cycle": makeLayer("cycle", "geodata_cycle"),
+    "Bicycle Rental": makeLayer("bicycle_rental", "geodata_bicycle_rental"),
+    "E-scooter Rental": makeLayer("escooter_rental", "geodata_escooter_rental"),
+    "Car Sharing": makeLayer("car_sharing", "geodata_car_sharing"),
+    "Self-Drive Car": makeLayer("self-drive-car", "geodata_self_drive_car")
+  };
+
+  // 🧹 1. Alte dynamische WMS-Layer von der Karte entfernen
+  map.eachLayer(layer => {
+    if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
+      map.removeLayer(layer);
+    }
+  });
+
+  // ❌ 2. Alte LayerControl entfernen
+  if (layersControlDynamic) {
+    map.removeControl(layersControlDynamic);
+  }
+
+  // ✅ 3. Einen neuen Layer direkt aktivieren
+  const activeLayer = newLayers["Walk"];
+  activeLayer.addTo(map);
+  detectLegendFromLayer(activeLayer);
+
+  // 🆕 4. Neue LayerControl erzeugen und zur Karte hinzufügen
+  layersControlDynamic = L.control.layers(newLayers, {
+    "Train Stations": trainLayerGroup
+  }, { collapsed: false }).addTo(map);
+}
+
   </script>
   
   
