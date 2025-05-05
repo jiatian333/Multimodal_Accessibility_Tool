@@ -1,7 +1,7 @@
 affine==2.4.0
 beautifulsoup4==4.12.3
 fastapi==0.115.12
-geopandas
+geopandas==1.0.1
 networkx==3.2.1
 numpy==1.26.4
 opencv_python==4.11.0.86
