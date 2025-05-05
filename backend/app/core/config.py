@@ -75,7 +75,10 @@ NUM_RESULTS_DESTINATIONS: Final[int] = 30 # Increase if often no valid station f
 # Number of top-ranked destinations per origin used in final evaluation
 MAX_DESTINATIONS: Final[int] = 3 # Higher = better accuracy, but significantly slower (evaluates more candidate pairs)
 
+# === OJP Restrictions ===
 OJP_SEMAPHORE: Final[asyncio.Semaphore] = asyncio.Semaphore(100)  # allow up to 100 concurrent OJP requests
+RATE_LIMIT: Final[int] = 100 # Max 100 calls per minute quota
+RATE_PERIOD: Final[int] = 60
 
 # === Geographic and Sampling Settings ===
 
@@ -94,8 +97,9 @@ BASE_GRID_SIZE: Final[int] = 500  # Meters between sampled grid centers
 EXTRA_POINTS: Final[int] = 100 # setting to 0 can prevent performance loss from intersection calculation (especially for small BASE_GRID_SIZE)
 
 # === Locks to prevent overwriting data ===
-TravelDataLock = asyncio.Lock()
-DistanceCacheLock = asyncio.Lock()
+TravelDataLock: Final[asyncio.Lock] = asyncio.Lock()
+DistanceCacheLock: Final[asyncio.Lock] = asyncio.Lock()
+RateLock: Final[asyncio.Lock] = asyncio.Lock()
 
 # === Directories ===
 

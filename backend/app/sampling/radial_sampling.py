@@ -70,7 +70,7 @@ def generate_radial_grid(
         num_rings = num_rings or (5 if performance else 6)
         base_points = base_points or 8
         offset_range = offset_range or 50
-        max_points = max_points or (50 if performance else 75)
+        max_points = max_points or (50 if performance else 100)
     elif mode in ['cycle', 'bicycle_rental', 'escooter_rental']:
         num_rings = num_rings or (6 if performance else 10)
         base_points = base_points or 7

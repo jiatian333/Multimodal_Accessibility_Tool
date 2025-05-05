@@ -1,24 +1,27 @@
 """
 OJP Request Builder for Travel Time and Location Queries
 
-This module provides functionality to construct and send XML-based requests
-to the OJP (Open Journey Planning) API. It supports both journey planning
-(`TripRequest`) and location search (`LocationInformationRequest`), and handles
-authentication and submission via HTTP POST.
+This module constructs and sends XML-based requests to the OJP (Open Journey Planning) API. It supports:
+- Journey planning (TripRequest)
+- Location search (LocationInformationRequest)
+
+It also includes logic to:
+- Enforce a global concurrency limit using a semaphore
+- Apply rate limiting to control total requests per time window
 
 Core Functions:
 ---------------
 - create_trip_request(...): Builds a journey planning XML request.
 - create_location_request(...): Builds a location search XML request.
-- send_request(...): Submits a prepared XML request asynchronously using a thread pool.
+- send_request(...): Sends an XML request to the OJP API with concurrency and rate limit protection.
+- enforce_rate_limit(...): Internal helper to throttle request rate based on configured limits.
 
 Dependencies:
 -------------
-- requests: For HTTP communication with the OJP API.
-- asyncio: For non-blocking request submission in concurrent contexts.
-- shapely.geometry.Point: For representing geographic coordinates.
-- os: For resolving XML template paths.
-- config: Loads template paths and API key.
+- requests: Synchronous HTTP POST handling
+- asyncio: For concurrency management and throttling
+- shapely.geometry.Point: For geographic inputs
+- app.core.config: Provides API credentials, template paths, and throttling constants
 
 Template Requirements:
 ----------------------
@@ -30,16 +33,23 @@ import asyncio
 import logging
 import os
 import time
-import requests    
+import requests  
+from collections import deque  
 from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 from shapely.geometry import Point
 
-from app.core.config import TEMPLATES_PATH, KEY, OJP_SEMAPHORE
+from app.core.config import (
+    TEMPLATES_PATH, KEY, OJP_SEMAPHORE,
+    RATE_LIMIT, RATE_PERIOD, RateLock
+)
 
 logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor()
+call_timestamps = deque()
+MIN_SPACING = RATE_PERIOD / RATE_LIMIT + 0.05
+last_request_time = time.monotonic()
 
 def create_trip_request(
     timestamp: str,
@@ -157,13 +167,85 @@ def create_location_request(
 
     return xml_request
 
+'''last_reset_time = time.monotonic()
+
+async def enforce_rate_limit():
+    """
+    Enforces bursty rate limit: allows up to RATE_LIMIT requests quickly,
+    then pauses for RATE_PERIOD before allowing another burst.
+    """
+    global last_reset_time
+
+    async with RateLock:
+        now = time.monotonic()
+
+        # Initialize or reset if window expired
+        if now - last_reset_time > RATE_PERIOD:
+            call_timestamps.clear()
+            last_reset_time = now
+
+        if len(call_timestamps) >= RATE_LIMIT:
+            wait_time = RATE_PERIOD - (now - last_reset_time)
+            await asyncio.sleep(wait_time)
+
+            # Reset after waiting
+            now = time.monotonic()
+            call_timestamps.clear()
+            last_reset_time = now
+
+        call_timestamps.append(now)'''
+
+'''async def enforce_rate_limit():
+    """
+    Asynchronously enforces a global request rate limit for OJP API access.
+
+    It tracks recent request timestamps and delays further requests if the number
+    of requests within the defined `RATE_PERIOD` exceeds the configured `RATE_LIMIT`.
+
+    This ensures compliance with external API quotas.
+
+    Behavior:
+        - If the current request window is full, pauses execution until one slot clears.
+        - Uses `RateLock` to synchronize across concurrent callers.
+
+    Raises:
+        asyncio.CancelledError: If the coroutine is cancelled during sleep.
+    """
+    async with RateLock:
+        now = time.monotonic()
+        while call_timestamps and now - call_timestamps[0] > RATE_PERIOD:
+            call_timestamps.popleft()
+
+        if len(call_timestamps) >= RATE_LIMIT:
+            wait_time = RATE_PERIOD - (now - call_timestamps[0])
+            await asyncio.sleep(wait_time)
+        
+        call_timestamps.append(time.monotonic())'''
+
+async def enforce_rate_limit():
+    """
+    Ensures that each request is spaced by at least MIN_SPACING seconds.
+    Enforces spacing across concurrent tasks using a global RateLock.
+    """
+    global last_request_time
+
+    async with RateLock:
+        now = time.monotonic()
+        wait_time = 0.8 - (now - last_request_time)
+
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+
+        last_request_time = time.monotonic()
+
 async def send_request(xml_request: str, endpoint: str) -> Tuple[str, int]:
     """
     Sends an XML-based OJP request asynchronously to the given API endpoint.
 
     This function ensures non-blocking execution by running the synchronous
     HTTP request inside a thread pool. It enforces request concurrency limits 
-    via a global `OJP_SEMAPHORE`.
+    via a global `OJP_SEMAPHORE` and also caps total requests over a rolling 
+    time window via a rate limiter (`enforce_rate_limit`).
 
     Args:
         xml_request (str): Fully rendered XML payload (TripRequest or LocationInformationRequest).
@@ -189,6 +271,7 @@ async def send_request(xml_request: str, endpoint: str) -> Tuple[str, int]:
         response = requests.post(endpoint, data=xml_request.encode('utf-8'), headers=headers)
         return response.text, response.status_code
     
-    time.sleep(5)
+    await enforce_rate_limit()
+    
     async with OJP_SEMAPHORE:
         return await asyncio.get_event_loop().run_in_executor(executor, blocking_post)

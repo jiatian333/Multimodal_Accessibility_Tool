@@ -222,7 +222,7 @@ async def process_single_point(
     total_time = None
     try:
         if should_skip_radial_point(radial_point, travel_data[mode], center):
-            return None, None
+            return None, None, None
 
         travel_time_end: float = 0.0
         destination_point: Point = radial_point
@@ -234,7 +234,7 @@ async def process_single_point(
                 radius, restriction_type, poi_filter
             )
             if result[0] is None:
-                return None, None
+                return None, None, None
             destination_point, travel_time_end = result
 
         total_time = await compute_total_point_time(
@@ -244,7 +244,7 @@ async def process_single_point(
         )
 
         if total_time is None:
-            return None, None
+            return None, None, None
 
         logger.debug(f"Computed total time {total_time:.2f} min from {center} to {radial_point} using mode {mode}.")
     

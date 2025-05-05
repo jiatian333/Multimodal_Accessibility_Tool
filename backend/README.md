@@ -115,7 +115,7 @@ cp .env.template .env
 
 # 3. Optional: Setup Git LFS for large geodata
 git lfs install
-git lfs track "*.shp" "*.gpkg" "cache/**"
+git lfs track "*.shp" "*.gpkg" "cache/**" "data/**"
 
 # 4. Run API locally
 uvicorn main:app --reload
@@ -154,9 +154,3 @@ GeoDataFrames are persisted to a PostgreSQL/PostGIS database.
 
 ---
 
-## Possible Further Improvements
-
-- Improve the performance mode (use only start and end point and call OJP directly without any additional computations)
-- Location Information Search request to OJP returns way too many results even though number of results should be limited to only 1 or 2 -> find reason and solve
-- Evaluate_best_candidate is the source for slowness of network isochrone computation -> find a way to further optimize and make parallel
-- Progress bar in run_in_badges does not update as it should even if it is clear from debug file that the entire code executed correctly -> find reason and fix, also somehow give priority to send_request so that the code always executes this first before all other tasks when possible

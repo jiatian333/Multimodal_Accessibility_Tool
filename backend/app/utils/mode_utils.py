@@ -127,7 +127,7 @@ def get_max_radius(mode: TransportModes, performance: bool) -> int:
         }
     else:
         limits = {
-            "walk": 2500,
+            "walk": 2000,
             "cycle": 7500,
             "bicycle_rental": 7500,
             "escooter_rental": 7500,

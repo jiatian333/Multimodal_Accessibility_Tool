@@ -376,7 +376,7 @@ async def point_travel_times_async(
     )
 
     for result in results:
-        if result:
+        if result[0]:
             rate_limit_flag = result[2]
             if rate_limit_flag:
                 break

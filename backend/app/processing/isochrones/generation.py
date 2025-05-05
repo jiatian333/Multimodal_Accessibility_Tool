@@ -135,7 +135,7 @@ def generate_isochrones(
     levels = np.arange(times_min, times_max + 1)
     
     # --- Grid creation ---
-    buffer = 250
+    buffer = 500
     resolution = 1000 if network_isochrones else 500
     lon_min, lat_min = points.min(axis=0)
     lon_max, lat_max = points.max(axis=0)
@@ -145,8 +145,8 @@ def generate_isochrones(
         np.linspace(lat_min - buffer, lat_max + buffer, resolution)
     )
 
-    grid_extent_x = lon_max - lon_min
-    grid_extent_y = lat_max - lat_min
+    grid_extent_x = lon_max - lon_min + 2 * (buffer - 250)
+    grid_extent_y = lat_max - lat_min + 2 * (buffer - 250)
     max_radius = min(grid_extent_x, grid_extent_y) / 2
     
     # --- Interpolation ---
