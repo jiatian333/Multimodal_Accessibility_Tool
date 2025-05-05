@@ -485,7 +485,6 @@
             if (name) {
               layer.bindPopup(`<b>${name}</b>`);
               stationLookup[name.toLowerCase()] = layer;
-              allStationNames.push(name);
 
               layer.on('mouseover', function () {
                 this.openPopup();
