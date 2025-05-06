@@ -47,33 +47,88 @@ def check_trip_response(response_text: str, status: int) -> str:
 
     return status_str
 
-def parse_trip_response(response_xml: str, mode: TransportModes) -> List[str]:
+def parse_trip_response(
+    response_xml: str,
+    mode: TransportModes,
+    full_trip: bool = False
+) -> Union[List[str], List[float]]:
     """
-    Parses an OJP TripResponse XML string and extracts durations for the requested mode.
+    Parses an OJP TripResponse XML and extracts durations for the requested transport mode.
+    
+    When `full_trip` is enabled, also includes durations of adjacent walking legs and returns
+    the total duration in minutes (decoded from ISO 8601 format).
 
     Args:
-        response_xml (str): XML content as a UTF-8 decoded string.
-        mode (TransportModes): The mode to filter for (e.g., 'self-drive-car').
+        response_xml (str): UTF-8 decoded XML response string from OJP API.
+        mode (TransportModes): Target transport mode (e.g., 'self-drive-car').
+        full_trip (bool): If True, also includes durations of adjacent walk legs 
+                          and returns decoded minutes. If False (default), returns 
+                          only mode-specific ISO 8601 duration strings.
 
     Returns:
-        List[str]: ISO 8601 duration strings (e.g., 'PT5M').
+        Union[List[str], List[float]]:
+            - If full_trip is False: List of ISO 8601 duration strings.
+            - If full_trip is True: List of total durations in float minutes.
     """
     namespaces = {
         "siri": "http://www.siri.org.uk/siri",
         "ojp": "http://www.vdv.de/ojp"
     }
+    
+    def extract_adjacent_walk_duration(leg: ET.Element) -> Optional[float]:
+        """
+        Extracts duration in minutes for a leg if it is a walking segment.
+
+        Args:
+            leg (ET.Element): The XML element representing a trip leg.
+
+        Returns:
+            Optional[float]: Duration in minutes if the leg is a walking leg, otherwise None.
+        """
+        neighbor_mode = leg.findtext(".//ojp:IndividualMode", default="", namespaces=namespaces)
+        if neighbor_mode.lower() == "walk":
+            duration_str = leg.findtext(".//ojp:Duration", default=None, namespaces=namespaces)
+            if duration_str:
+                return decode_duration([duration_str])
+        return None
 
     root = ET.fromstring(response_xml)
-    durations = []
+    results = []
+    default = None if full_trip else 'Unknown'
 
     for trip_result in root.findall(".//ojp:TripResult", namespaces):
-        for trip_leg in trip_result.findall(".//ojp:TripLeg", namespaces):
+        trip_legs = trip_result.findall(".//ojp:TripLeg", namespaces)
+
+        for i, trip_leg in enumerate(trip_legs):
             mode_element = trip_leg.find(".//ojp:IndividualMode", namespaces)
             if mode_element is not None and mode_element.text == mode:
-                duration = trip_leg.findtext(".//ojp:Duration", default="Unknown", namespaces=namespaces)
-                durations.append(duration)
+                duration = trip_leg.findtext(".//ojp:Duration", default=default, namespaces=namespaces)
+                
+                if not full_trip:
+                    results.append(duration)
+                    continue
 
-    return durations
+                durations = []
+                if duration:
+                    main_duration = decode_duration([duration])
+                    if main_duration:
+                        durations.append(main_duration)
+
+                if i > 0:
+                    prev_duration = extract_adjacent_walk_duration(trip_legs[i - 1])
+                    if prev_duration:
+                        durations.append(prev_duration)
+
+                if i < len(trip_legs) - 1:
+                    next_duration = extract_adjacent_walk_duration(trip_legs[i + 1])
+                    if next_duration:
+                        durations.append(next_duration)
+
+                if durations:
+                    results.append(sum(durations))
+                break
+
+    return results
 
 def decode_duration(duration: List[str]) -> Optional[float]:
     """

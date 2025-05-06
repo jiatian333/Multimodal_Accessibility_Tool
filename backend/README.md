@@ -84,7 +84,7 @@ templates/                    # XML templates for OJP requests
 }
 ```
 
--  All computations use async true parallelism under the hood for maximum speed
+- All computations use async true parallelism under the hood for maximum speed
 - Embedded metadata (travel time, origin, mode)
 
 ### 📍 Strategy Comparison
@@ -99,7 +99,7 @@ templates/                    # XML templates for OJP requests
 ## 🛠 Setup & Installation
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (code was built using python=3.9.21)
 pip install -r requirements.txt
 
 # 2. Set up environment variables

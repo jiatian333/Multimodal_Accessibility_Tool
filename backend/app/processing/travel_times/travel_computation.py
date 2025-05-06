@@ -18,6 +18,7 @@ Main Functions:
 - `network_travel_times_async`: Computes travel times from a list of origin points to multimodal destinations.
 - `point_travel_times_async`: Computes travel times from a single center to multiple points for point isochrone generation.
 - `run_in_batches`: General-purpose batch runner with timeout, abort condition, and progress display.
+- `point_travel_times_performance(...)`: Computes and parses OJP-based travel times to multiple endpoints (used for performance reasons).
 
 External Dependencies:
 ----------------------
@@ -36,9 +37,12 @@ Example:
 
 import asyncio
 import logging
+import requests
 import sys
-from typing import Dict, List, Optional, Tuple, Callable, Union
-
+from typing import (
+    Dict, List, Optional, Tuple, Union,
+    Callable, TypeVar, Awaitable
+)
 import networkx as nx
 import pandas as pd
 from pyproj import Transformer
@@ -56,22 +60,24 @@ from app.processing.travel_times.async_helpers import (
     process_single_point,
 )
 from app.processing.travel_times.point_travel_logic import resolve_origin_station
-from app.utils.mode_utils import select_parameters, get_travel_mode_and_xml
+from app.requests.parse_response import parse_trip_response
+from app.utils.mode_utils import (
+    select_parameters, get_travel_mode_and_xml, mode_selection
+)
+from app.utils.ojp_helpers import (
+    query_ojp_travel_time, RateLimitExceededError
+)
 
 logger = logging.getLogger(__name__)
-    
+T = TypeVar("T")
     
 async def run_in_batches(
-    tasks: List[Callable[[], asyncio.Future]],  
+    tasks: List[Callable[[], Awaitable[T]]],  
     batch_size: int = 50,
     desc: str = "Processing",
-    abort_condition: Optional[
-        Callable[[Union[
-            Tuple[Optional[Point], Optional[float], Optional[str]], 
-            Optional[str]]], bool]
-    ] = None,
+    abort_condition: Optional[Callable[[Union[T, str]], bool]] = None,
     timeout_per_task: int = 600
-) -> List:
+) -> List[Union[T, str]]:
     """
     Runs a sequence of coroutine factories in async batches with timeout and progress bar.
 
@@ -87,10 +93,13 @@ async def run_in_batches(
         timeout_per_task (int): Max duration (in seconds) per task before timeout.
 
     Returns:
-        List: List of all task results, including partial results if aborted.
+        List[T]: Results from each coroutine task, or partial results if aborted early.
     """
 
-    async def safe_await(task_factory, task_index):
+    async def safe_await(
+        task_factory: Callable[[], Awaitable[T]], 
+        task_index: int
+    ) -> Union[T, str]:
         """
         Runs a coroutine with timeout and structured error handling.
 
@@ -103,7 +112,7 @@ async def run_in_batches(
             task_index (int): Index of the task (for logging context).
 
         Returns:
-            Any: Result of the coroutine, or string error message on failure.
+            Union[T, str]: Result of the coroutine, or string error message on failure.
         """
         try:
             coro = task_factory()
@@ -114,6 +123,12 @@ async def run_in_batches(
         except asyncio.CancelledError:
             logger.error(f"Task {task_index} was cancelled.")
             return "error: cancelled"
+        except requests.exceptions.ConnectionError:
+            logger.error(f'Task {task_index} exceeded the max retries to connect to the OJP API.')
+            return "error: max retries"
+        except RateLimitExceededError as e:
+            logger.error(f"Rate limit hit during execution: {e}")
+            return "error: 429, rate limit exceeded for the OJP API"
         except Exception as e:
             logger.exception(f"Unhandled exception in task {task_index}: {e}")
             return f"error: {str(e)}"
@@ -285,7 +300,8 @@ async def point_travel_times_async(
     mode: TransportModes, 
     arr: str,
     timestamp: str,
-    transformer: Transformer
+    transformer: Transformer,
+    performance: bool
 ) -> Tuple[TravelData, bool, Optional[str]]:
     """
     Asynchronously computes travel times from a single center point to multiple destination points.
@@ -300,6 +316,9 @@ async def point_travel_times_async(
 
     Travel times are computed using either OJP or walking network routing depending on the mode.
     Batched and parallelized with timeout and error detection (e.g., OJP API).
+    
+    Note that for performance mode, everything is calculated within OJP internally for improved speed, 
+    at the cost of having less control and more invalid results being returned. 
 
     Args:
         travel_data (TravelData): Dictionary storing cached and new travel time results.
@@ -313,6 +332,7 @@ async def point_travel_times_async(
         arr (str): Arrival time (ISO 8601).
         timestamp (str): Current time (ISO 8601).
         transformer (Transformer): CRS transformer used for routing.
+        performance (bool): Toggles the complete use of OJP to boost performance significantly. 
 
     Returns:
         Tuple[TravelData, bool, Optional[str]]:
@@ -322,6 +342,15 @@ async def point_travel_times_async(
     """
     travel_times: List[float] = []
     valid_points: List[Point] = []
+    if performance:
+        valid_points, travel_times, rate_limit_flag = await point_travel_times_performance(
+            center, points, mode, timestamp, arr
+        )
+        if not valid_points:
+            return travel_data, False, rate_limit_flag
+        await store_point_travel_time(mode, center, valid_points, travel_times, travel_data)
+        return travel_data, True, rate_limit_flag
+        
     rate_limit_flag: Optional[str] = None
     travel_time_start: float = 0.0
     radius: int = 0
@@ -343,7 +372,7 @@ async def point_travel_times_async(
         return travel_data, False, None
     
     async def wrapped_process_single_point(point: Point, *args, **kwargs
-    )-> Tuple[Optional[Point], Optional[float], Optional[str]]:
+    )-> Tuple[Optional[Point], Optional[float]]:
         """
         Wrapper for `process_single_point` that sets the current
         logging context to this point before processing.
@@ -352,7 +381,7 @@ async def point_travel_times_async(
             point (Point): The radial point being processed.
 
         Returns:
-            Tuple[Optional[Point], Optional[float], Optional[str]]: Result of point computation.
+            Tuple[Optional[Point], Optional[float]]: Result of point computation.
         """
         set_point_context(point)
         return await process_single_point(point, *args, **kwargs)
@@ -371,20 +400,83 @@ async def point_travel_times_async(
         tasks,
         batch_size=50,
         desc="Computing point times",
-        abort_condition=lambda r: isinstance(r, tuple) and r[2] and "error: 429" in r[2],
+        abort_condition=lambda r: isinstance(r, str) and "error: 429" in r,
         timeout_per_task=900
     )
 
     for result in results:
-        if result[0]:
-            rate_limit_flag = result[2]
-            if rate_limit_flag:
-                break
-        
+        if isinstance(result, tuple) and result[0] and result[1]:
             valid_points.append(result[0])
             travel_times.append(result[1])
+        elif isinstance(result, str) and "error: 429" in result:
+            rate_limit_flag = result
+            break
     
     logger.info(f"Successfully processed {len(valid_points)} / {len(points)} points.")
 
     await store_point_travel_time(mode, center, valid_points, travel_times, travel_data)
     return travel_data, True, rate_limit_flag
+
+
+async def point_travel_times_performance(
+    center: Point,
+    points: List[Point],
+    mode: TransportModes,
+    timestamp: str,
+    arr: str
+) -> Tuple[List[Point], List[float], Optional[str]]:
+    """
+    Asynchronously computes OJP travel times from a central point to a list of destination points.
+
+    This function issues OJP trip queries for each destination and parses results using
+    a mode-specific parsing function. It also tracks rate-limiting errors.
+
+    Args:
+        center (Point): Origin location (in EPSG:4326) from which all trips start.
+        points (List[Point]): List of destination points to calculate travel times for.
+        mode (TransportModes): Transport mode identifier (e.g., "bicycle_rental").
+        timestamp (str): Current request timestamp in ISO-8601 format.
+        arr (str): Arrival time in ISO-8601 format.
+
+    Returns:
+        Tuple[List[Point], List[float], Optional[str]]:
+            - List of destination points with valid OJP responses.
+            - Corresponding list of travel times in minutes.
+            - Error flag (e.g., for rate limit), or None if no issue occurred.
+    """
+    mode_xml = mode_selection(mode)
+    travel_mode, _ = get_travel_mode_and_xml(mode)
+
+    tasks = [
+        (p, lambda p=p: query_ojp_travel_time(
+            center,
+            p,
+            mode,
+            mode_xml,
+            timestamp,
+            arr,
+            parse_fn=lambda xml, _: parse_trip_response(xml, travel_mode, full_trip=True)
+        ))
+        for p in points if not center.equals(p)
+    ]
+    valid_points: List[Point] = [p for p in points if center.equals(p)]
+    travel_times: List[float] = [0.0] * len(valid_points)
+
+    raw_results = await run_in_batches(
+        [task for _, task in tasks],
+        batch_size=50,
+        desc="OJP Performance Mode",
+        abort_condition=lambda r: isinstance(r, str) and "error: 429" in r,
+        timeout_per_task=60
+    )
+
+    rate_limit_flag = None
+    for (point, _), result in zip(tasks, raw_results):
+        if isinstance(result, str) and "429" in result:
+            rate_limit_flag = result
+            break
+        elif isinstance(result, float):
+            valid_points.append(point)
+            travel_times.append(result)
+
+    return valid_points, travel_times, rate_limit_flag

@@ -3,7 +3,8 @@ Isochrone Generation and Contour Extraction
 
 This module provides the full pipeline for generating isochrones from spatial travel time data.
 It supports both network-wide and point-centered isochrones and handles raster interpolation,
-geometry extraction, and projection management.
+geometry extraction, and projection management. Note that some stages are skipped if the 
+performance mode is toggled accordingly. 
 
 Processing Stages:
 ------------------
@@ -30,7 +31,7 @@ import geopandas as gpd
 from pyproj import Transformer, CRS
 from affine import Affine
 from shapely.geometry import (
-    Point, Polygon, LineString, GeometryCollection, MultiPolygon
+    Point, Polygon, LineString, MultiPolygon
 )
 from shapely.ops import polygonize
 from scipy.ndimage import (
@@ -52,20 +53,25 @@ logger = logging.getLogger(__name__)
 def extract_contours(
     level: float,
     mask: np.ndarray,
-    city_mask_area: MultiPolygon,
+    city_mask_area: Optional[MultiPolygon],
     isochrones: List[Dict[str, Union[float, Polygon, MultiPolygon]]],
-    transform: Affine
+    transform: Affine, 
+    performance: bool
 ) -> List[Dict[str, Union[float, Polygon, MultiPolygon]]]:
     """
     Converts a binary mask into polygon contours, applies spatial clipping,
     and appends valid shapes to the isochrone list.
+    
+    If performance mode is enabled, skips morphological filtering and uses faster clipping
+    by subtracting only the water geometry (instead of a full city polygon difference).
 
     Args:
         level (float): Travel time level associated with the mask.
         mask (np.ndarray): Binary mask for the current level.
-        city_mask_area (MultiPolygon): Area within which isochrones must lie (e.g., city minus water).
+        city_mask_area (MultiPolygon): Geometry used for clipping (e.g. city minus water), or None if performance mode.
         isochrones (List[Dict]): Accumulator list of extracted isochrones.
         transform (Affine): Affine transformation to map pixel to CRS coordinates.
+        performance (bool): Whether to skip expensive geometry and raster operations.
 
     Returns:
         List[Dict[str, Union[float, Polygon, MultiPolygon]]]: Updated list of polygonized isochrones for the level.
@@ -76,24 +82,26 @@ def extract_contours(
 
     contours = measure.find_contours(mask.astype(np.uint8), level=0.5)
     lines = [
-        LineString([(c[1], c[0]) for c in contour]) 
+        LineString([(c[1], c[0]) for c in contour])
         for contour in contours if len(contour) > 1
     ]
 
     for poly in polygonize(lines):
         polygon_transformed = Polygon([transform * (x, y) for x, y in poly.exterior.coords])
-        clipped_poly = validate_geometry(polygon_transformed).intersection(city_mask_area)
+        if not performance:
+            clipped_poly = validate_geometry(polygon_transformed).intersection(city_mask_area)
+        else:
+            clipped_poly = validate_geometry(polygon_transformed)
 
         if not clipped_poly.is_empty and clipped_poly.area >= 1e-6:
             isochrones.append({"level": level, "geometry": clipped_poly})
 
     return isochrones
 
-
 def generate_isochrones(
     travel_data: TravelData,
     mode: TransportModes,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     city_poly: Polygon,
     initial_crs: CRS,
     target_crs: CRS,
@@ -101,15 +109,20 @@ def generate_isochrones(
     smooth_sigma: float = 3,
     center: Optional[Point] = None,
     network_isochrones: bool = False,
-    input_station: Optional[str] = None
+    input_station: Optional[str] = None,
+    performance: bool = False
 ) -> gpd.GeoDataFrame:
     """
     Generates spatial isochrones for a given mode using interpolation and contour extraction.
+    
+    This function interpolates travel times over a 2D grid, extracts time-based contours,
+    and clips them to the city boundary. In performance mode, lower resolution and fewer
+    computations are used to speed up execution with minimal accuracy loss.
 
     Args:
         travel_data (TravelData): Dictionary of travel time data per mode.
         mode (TransportModes): Mode of transportation (e.g., "walk", "cycle", etc.).
-        water_combined (GeometryCollection): Water geometry to exclude from city area in WGS84.
+        water_combined (MultiPolygon): Water geometry to exclude from city area in WGS84.
         city_poly (Polygon): Bounding city polygon in WGS84.
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
@@ -118,6 +131,7 @@ def generate_isochrones(
         center (Point, optional): Origin point in WGS84 (for point isochrones).
         network_isochrones (bool): Whether this is based on network travel time.
         input_station (str, optional): Station name (for point isochrones).
+        performance (bool): If True, uses faster approximations with minor accuracy loss.
 
     Returns:
         gpd.GeoDataFrame: Polygonized isochrone geometries with travel time levels.
@@ -135,8 +149,13 @@ def generate_isochrones(
     levels = np.arange(times_min, times_max + 1)
     
     # --- Grid creation ---
-    buffer = 500
-    resolution = 1000 if network_isochrones else 500
+    buffer = 1000
+    if performance:
+        resolution = 250
+        k = 8
+    else:
+        resolution = 1000 if network_isochrones else 500
+        k = 8
     lon_min, lat_min = points.min(axis=0)
     lon_max, lat_max = points.max(axis=0)
 
@@ -145,26 +164,29 @@ def generate_isochrones(
         np.linspace(lat_min - buffer, lat_max + buffer, resolution)
     )
 
-    grid_extent_x = lon_max - lon_min + 2 * (buffer - 250)
-    grid_extent_y = lat_max - lat_min + 2 * (buffer - 250)
+    grid_extent_x = lon_max - lon_min + 2 * (buffer - 150)
+    grid_extent_y = lat_max - lat_min + 2 * (buffer - 150)
     max_radius = min(grid_extent_x, grid_extent_y) / 2
     
     # --- Interpolation ---
     normalized_times = (times - times_min) / (times_max - times_min)
-    grid_z = inverse_distance_weighting(points, normalized_times, grid_x, grid_y, power=2, k=8)
+    grid_z = inverse_distance_weighting(points, normalized_times, grid_x, grid_y, power=2, k=k)
 
     if np.all(np.isnan(grid_z)):
         logger.error("Interpolated grid contains only NaN values.")
         raise ValueError("Interpolated grid contains only NaN values.")
-
-    grid_z = fill_gaps(grid_z, smooth_sigma)
-    grid_z = cv2.GaussianBlur(grid_z.astype(np.float32), (3, 3), 1)
+    if not performance:
+        grid_z = fill_gaps(grid_z, smooth_sigma)
+        grid_z = cv2.GaussianBlur(grid_z.astype(np.float32), (3, 3), 1)
     grid_z = grid_z * (times_max - times_min) + times_min
 
     # --- Geometry preparation ---
-    city_projected = gpd.GeoSeries([city_poly], crs=initial_crs).to_crs(target_crs).iloc[0]
-    water_projected = gpd.GeoSeries([water_combined], crs=initial_crs).to_crs(target_crs).iloc[0]
-    city_mask_area = city_projected.difference(water_projected)
+    if performance:
+        city_mask_area = None
+    else:
+        water_projected = gpd.GeoSeries([water_combined], crs=initial_crs).to_crs(target_crs).iloc[0]
+        city_projected = gpd.GeoSeries([city_poly], crs=initial_crs).to_crs(target_crs).iloc[0]
+        city_mask_area = city_projected.difference(water_projected)
 
     xres = (lon_max + buffer - (lon_min - buffer)) / resolution
     yres = (lat_max + buffer - (lat_min - buffer)) / resolution
@@ -174,11 +196,11 @@ def generate_isochrones(
     isochrones = []
     epsilon = 0.01
     mask = grid_z <= levels[0] + epsilon
-    isochrones = extract_contours(levels[0], mask, city_mask_area, isochrones, transform)
+    isochrones = extract_contours(levels[0], mask, city_mask_area, isochrones, transform, performance)
 
     for i in range(len(levels) - 1):
         mask = (grid_z > levels[i]) & (grid_z <= levels[i + 1] + epsilon)
-        isochrones = extract_contours(levels[i + 1], mask, city_mask_area, isochrones, transform)
+        isochrones = extract_contours(levels[i + 1], mask, city_mask_area, isochrones, transform, performance)
 
     if not isochrones:
         logger.error("No isochrones generated. Check input travel data and interpolation.")

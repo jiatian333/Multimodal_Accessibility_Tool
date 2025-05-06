@@ -77,6 +77,10 @@ async def process_single_network_point(
     - Resolving rental chain if rental mode.
     - Resolving final destination and nearest station.
     - Computing total travel time and updating travel_data.
+    
+    Exceptions:
+        This function may raise exceptions (e.g., RateLimitExceededError) during processing.
+        Exceptions are expected to be handled by the calling function (e.g., `run_in_batches`).
 
     Args:
         random_point (Point): Origin random point.
@@ -96,8 +100,7 @@ async def process_single_network_point(
         Optional[str]: One of:
             - "success" if the point was processed successfully.
             - "already_processed" if cached.
-            - "error: 429..." if rate limit hit.
-            - Custom error message if processing failed.
+        - Informational string (e.g., "No valid destination found.") if point is skipped.
     """
     if should_skip_point(random_point, mode_data):
         return "already_processed"
@@ -107,60 +110,55 @@ async def process_single_network_point(
     rental_stored: bool = False
     current_point: Point = random_point
     modes: List[List[str]] = []
+    mode_xml: Optional[str] = None
+    travel_mode: Optional[str] = None
     
-    try:
-        if rental:
-            current_point, rental_station, destination, travel_time_mode, rental_stored, nearest, travel_time_walk = await resolve_rental_chain(
-                random_point, polygon, idx, mode, G, travel_data, timestamp, public_transport_stations
-            )
-            if not rental_station:
-                return 'No valid rental station found. Skipping!'
-
-        if not rental_stored:
-            destination, modes, nearest, travel_time_walk, travel_mode, mode_xml = await resolve_destination_and_nearest(
-                current_point, polygon, idx, mode, G, travel_data, timestamp, public_transport_stations, rental
-            )
-            if not destination:
-                return 'No valid destination found. Skipping!'
-
-        destination, nearest, travel_time_walk = await resolve_final_destination(
-            current_point, mode, rental, rental_stored, idx, destination, 
-            travel_data, nearest, travel_time_walk, G, modes, polygon
+    if rental:
+        current_point, rental_station, destination, travel_time_mode, rental_stored, nearest, travel_time_walk = await resolve_rental_chain(
+            random_point, polygon, idx, mode, G, travel_data, timestamp, public_transport_stations
         )
+        if not rental_station:
+            return 'No valid rental station found. Skipping!'
 
-        if mode != "walk" and not nearest:
-            return 'No valid nearest station found. Skipping point!'
-        
-        travel_time = await compute_and_cache_total_travel_time(
-            mode=mode,
-            mode_xml=mode_xml,
-            travel_mode=travel_mode,
-            current_point=current_point,
-            rental_stored=rental_stored,
-            rental=rental,
-            random_point=random_point,
-            rental_station=rental_station,
-            nearest=nearest,
-            destination=destination,
-            travel_time_mode=travel_time_mode,
-            travel_time_walk=travel_time_walk,
-            G=G,
-            arr=arr,
-            timestamp=timestamp,
-            transformer=transformer,
-            travel_data=travel_data
+    if not rental_stored:
+        destination, modes, nearest, travel_time_walk, travel_mode, mode_xml = await resolve_destination_and_nearest(
+            current_point, polygon, idx, mode, G, travel_data, timestamp, public_transport_stations, rental
         )
+        if not destination:
+            return 'No valid destination found. Skipping!'
 
-        if travel_time is None:
-            return None
-        
-        logger.debug(f"Total travel time of {travel_time} min from origin={random_point} to destination={destination} using mode={mode}.")
-    except RateLimitExceededError as e:
-        logger.error(
-            f"Rate limit exceeded, exiting loop: {e}. Isochrones will still be generated using the existing "
-            "information but may appear incomplete/contain artifacts."
-        )
-        return "error: 429, rate limit exceeded for the OJP API"
+    destination, nearest, travel_time_walk = await resolve_final_destination(
+        current_point, mode, rental, rental_stored, idx, destination, 
+        travel_data, nearest, travel_time_walk, G, modes, polygon
+    )
+
+    if mode != "walk" and not nearest:
+        return 'No valid nearest station found. Skipping point!'
+    
+    travel_time = await compute_and_cache_total_travel_time(
+        mode=mode,
+        mode_xml=mode_xml,
+        travel_mode=travel_mode,
+        current_point=current_point,
+        rental_stored=rental_stored,
+        rental=rental,
+        random_point=random_point,
+        rental_station=rental_station,
+        nearest=nearest,
+        destination=destination,
+        travel_time_mode=travel_time_mode,
+        travel_time_walk=travel_time_walk,
+        G=G,
+        arr=arr,
+        timestamp=timestamp,
+        transformer=transformer,
+        travel_data=travel_data
+    )
+
+    if travel_time is None:
+        return None
+    
+    logger.debug(f"Total travel time of {travel_time} min from origin={random_point} to destination={destination} using mode={mode}.")
     return "success"
 
 
@@ -184,12 +182,16 @@ async def process_single_point(
     poi_filter: str,
     travel_mode: str,
     mode_xml: str
-) -> Tuple[Optional[Point], Optional[float], Optional[str]]:
+) -> Tuple[Optional[Point], Optional[float]]:
     """
     Asynchronously processes a single radial point for point-based isochrone computation:
     - Checks if already processed.
     - Resolves destination station (if rental mode).
     - Computes total travel time from origin to destination.
+    
+    Exceptions:
+        This function may raise exceptions (e.g., RateLimitExceededError) during processing.
+        Exceptions are expected to be handled by the calling function (e.g., `run_in_batches`).
 
     Args:
         radial_point (Point): Destination point.
@@ -213,43 +215,37 @@ async def process_single_point(
         mode_xml (str): OJP-specific XML representation of the mode.
 
     Returns:
-        Tuple[Optional[Point], Optional[float], Optional[str]]:
+        Tuple[Optional[Point], Optional[float]]:
             - Destination point if successful.
             - Total travel time in minutes.
-            - Optional error flag if rate limit occurred.
     """
-    rate_limit_flag = None
     total_time = None
-    try:
-        if should_skip_radial_point(radial_point, travel_data[mode], center):
-            return None, None, None
+    
+    if should_skip_radial_point(radial_point, travel_data[mode], center):
+        return None, None
 
-        travel_time_end: float = 0.0
-        destination_point: Point = radial_point
+    travel_time_end: float = 0.0
+    destination_point: Point = radial_point
 
-        if rental:
-            result = await resolve_destination_station(
-                radial_point, mode, rental, travel_data, idx, G, polygon,
-                timestamp, transformer, arr, public_transport_modes,
-                radius, restriction_type, poi_filter
-            )
-            if result[0] is None:
-                return None, None, None
-            destination_point, travel_time_end = result
-
-        total_time = await compute_total_point_time(
-            start, destination_point, travel_mode, mode_xml,
-            travel_time_start, travel_time_end,
-            G, arr, timestamp, transformer
+    if rental:
+        result = await resolve_destination_station(
+            radial_point, mode, rental, travel_data, idx, G, polygon,
+            timestamp, transformer, arr, public_transport_modes,
+            radius, restriction_type, poi_filter
         )
+        if result[0] is None:
+            return None, None
+        destination_point, travel_time_end = result
 
-        if total_time is None:
-            return None, None, None
+    total_time = await compute_total_point_time(
+        start, destination_point, travel_mode, mode_xml,
+        travel_time_start, travel_time_end,
+        G, arr, timestamp, transformer
+    )
 
-        logger.debug(f"Computed total time {total_time:.2f} min from {center} to {radial_point} using mode {mode}.")
+    if total_time is None:
+        return None, None
+
+    logger.debug(f"Computed total time {total_time:.2f} min from {center} to {radial_point} using mode {mode}.")
     
-    except RateLimitExceededError as e:
-        logger.error(f"Rate limit hit for center point {center}: {e}")
-        rate_limit_flag = "error: 429, rate limit exceeded for the OJP API"
-    
-    return radial_point, total_time, rate_limit_flag
+    return radial_point, total_time

@@ -19,7 +19,7 @@ Returns:
 
 import numpy as np
 import geopandas as gpd
-from shapely.geometry import Point, Polygon, GeometryCollection
+from shapely.geometry import Point, Polygon, MultiPolygon
 from scipy.spatial import KDTree
 from typing import List
 from pyproj import CRS
@@ -39,7 +39,7 @@ from app.sampling.polygon_sampling import (
 
 def generate_adaptive_sample_points(
     polygon: Polygon,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     target_crs: CRS,
     initial_crs: CRS, 
     mode: TransportModes
@@ -50,7 +50,7 @@ def generate_adaptive_sample_points(
 
     Args:
         polygon (Polygon): City boundary (EPSG:4326).
-        water_combined (GeometryCollection): Merged water features to exclude (EPSG:4326).
+        water_combined (MultiPolygon): Merged water features to exclude (EPSG:4326).
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         mode (TransportModes): Transport mode (e.g., 'walk', 'cycle', 'car_sharing').
@@ -121,7 +121,7 @@ def generate_adaptive_sample_points(
 def sample_additional_points(
     isochrones_gdf: gpd.GeoDataFrame,
     city_polygon: Polygon,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     target_crs: CRS, 
     initial_crs: CRS, 
     n_unsampled: int = 50,
@@ -133,7 +133,7 @@ def sample_additional_points(
     Args:
         isochrones_gdf (GeoDataFrame): Existing isochrones to evaluate coverage.
         city_polygon (Polygon): Area to constrain the sampling.
-        water_combined (GeometryCollection): Combined water mask to avoid invalid areas.
+        water_combined (MultiPolygon): Combined water mask to avoid invalid areas.
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         n_unsampled (int): Number of points to distribute in uncovered areas.

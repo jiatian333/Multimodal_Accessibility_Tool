@@ -61,7 +61,7 @@ from app.data.rental_storage import (
 from app.utils.mode_utils import mode_selection
 from app.utils.request_processing import (
     process_and_get_travel_time,
-    process_location_request,
+    process_location_request
 )
 from app.utils.routing import find_closest_parking
 

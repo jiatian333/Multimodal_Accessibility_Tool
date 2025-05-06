@@ -62,7 +62,7 @@ import logging
 import time
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel, Field
 from shapely.geometry import Point
 
@@ -137,7 +137,11 @@ class ComputeResponse(BaseModel):
     runtime: Optional[float] = None
 
 @router.post("/", response_model=ComputeResponse)
-async def compute_isochrones(req: ComputeRequest) -> ComputeResponse:
+async def compute_isochrones(
+    req: ComputeRequest, 
+    request: Request, 
+    background_tasks: BackgroundTasks
+) -> ComputeResponse:
     """
     Main API endpoint to compute isochrones.
 
@@ -146,6 +150,8 @@ async def compute_isochrones(req: ComputeRequest) -> ComputeResponse:
 
     Args:
         req (ComputeRequest): Request object with computation settings.
+        request (Request): FastAPI request object containing app state.
+        background_tasks (BackgroundTasks): FastAPI background task handler for deferred persistence.
 
     Returns:
         ComputeResponse: Success status and metadata or an error message.
@@ -176,7 +182,7 @@ async def compute_isochrones(req: ComputeRequest) -> ComputeResponse:
         )
 
     stationary_data.load()
-    travel_data = load_data()
+    travel_data = request.app.state.travel_data
     
     if not check_travel_data_integrity(travel_data):
         logger.error("Travel data corrupted.")
@@ -186,11 +192,16 @@ async def compute_isochrones(req: ComputeRequest) -> ComputeResponse:
         )
 
     if req.network_isochrones:
-        return await compute_network_isochrones(travel_data, req, start)
+        return await compute_network_isochrones(travel_data, req, start, background_tasks)
     else:
-        return await compute_point_isochrones(travel_data, req, start)
+        return await compute_point_isochrones(travel_data, req, start, background_tasks)
 
-async def compute_network_isochrones(travel_data: TravelData, req: ComputeRequest, start: float) -> ComputeResponse:
+async def compute_network_isochrones(
+    travel_data: TravelData, 
+    req: ComputeRequest, 
+    start: float, 
+    background_tasks: BackgroundTasks
+) -> ComputeResponse:
     """
     Computes network-wide isochrones using randomly sampled points.
 
@@ -198,6 +209,7 @@ async def compute_network_isochrones(travel_data: TravelData, req: ComputeReques
         travel_data (TravelData): Current cached travel time data.
         req (ComputeRequest): Input request with parameters.
         start (float): Starting time of the computation in seconds.
+        background_tasks (BackgroundTasks): For scheduling async persistence (e.g., saving data).
 
     Returns:
         ComputeResponse: Status dictionary with metadata or an error message.
@@ -218,7 +230,7 @@ async def compute_network_isochrones(travel_data: TravelData, req: ComputeReques
         stationary_data.public_transport_stations, req.mode,
         req.arrival_time, req.timestamp, stationary_data.transformer
     )
-    await save_data(travel_data)
+    background_tasks.add_task(save_data, travel_data)
     
     if rate_limit_flag and "429" in rate_limit_flag:
         return ComputeResponse(
@@ -249,7 +261,7 @@ async def compute_network_isochrones(travel_data: TravelData, req: ComputeReques
             stationary_data.public_transport_stations, req.mode,
             req.arrival_time, req.timestamp, stationary_data.transformer
         )
-        await save_data(travel_data)
+        background_tasks.add_task(save_data, travel_data)
 
         isochrones = generate_isochrones(
             travel_data, req.mode, stationary_data.water_combined,
@@ -277,7 +289,12 @@ async def compute_network_isochrones(travel_data: TravelData, req: ComputeReques
     )
 
 
-async def compute_point_isochrones(travel_data: TravelData, req: ComputeRequest, start: float) -> ComputeResponse:
+async def compute_point_isochrones(
+    travel_data: TravelData, 
+    req: ComputeRequest, 
+    start: float,
+    background_tasks: BackgroundTasks
+) -> ComputeResponse:
     """
     Computes point-based isochrones centered on a specific station asynchronously.
 
@@ -285,14 +302,13 @@ async def compute_point_isochrones(travel_data: TravelData, req: ComputeRequest,
         travel_data (TravelData): Current cached travel time data.
         req (ComputeRequest): Input request with parameters.
         start (float): Starting time of the computation in seconds.
+        background_tasks (BackgroundTasks): For scheduling async persistence (e.g., saving data).
 
     Returns:
         ComputeResponse: Status dictionary with metadata or an error message.
     """
     
     logger.info(f"Computing point isochrones for station: {req.input_station}.")
-    polygon = stationary_data.city_poly if req.performance else stationary_data.canton_poly
-    graph = stationary_data.G_city if req.performance else stationary_data.G_canton
     
     lookup = stationary_data.public_transport_stations.set_index("name")[["longitude", "latitude"]].to_dict("index")
     coords = lookup.get(req.input_station)
@@ -304,16 +320,17 @@ async def compute_point_isochrones(travel_data: TravelData, req: ComputeRequest,
     max_radius = get_max_radius(req.mode, req.performance)
     
     points = generate_radial_grid(
-        center, polygon, stationary_data.water_combined, 
-        max_radius, stationary_data.target_crs,
-        stationary_data.source_crs, req.mode, req.performance
+        center, stationary_data.canton_poly, stationary_data.water_combined, 
+        max_radius, stationary_data.source_crs,
+        stationary_data.target_crs, req.mode, req.performance, 
+        stationary_data.transformer
     )
 
     travel_data, success, rate_limit_flag = await point_travel_times_async(
-        travel_data, center, points, stationary_data.idx, graph, polygon,
-        stationary_data.public_transport_stations, mode=req.mode,
-        arr=req.arrival_time, timestamp=req.timestamp, 
-        transformer=stationary_data.transformer
+        travel_data, center, points, stationary_data.idx, stationary_data.G_canton, 
+        stationary_data.canton_poly, stationary_data.public_transport_stations, 
+        mode=req.mode, arr=req.arrival_time, timestamp=req.timestamp, 
+        transformer=stationary_data.transformer, performance=req.performance
     )
     
     if rate_limit_flag and "429" in rate_limit_flag:
@@ -331,13 +348,14 @@ async def compute_point_isochrones(travel_data: TravelData, req: ComputeRequest,
             runtime=round((time.time() - start) / 60, 2)
         )
 
-    await save_data(travel_data)
+    background_tasks.add_task(save_data, travel_data)
     
     isochrones = generate_isochrones(
         travel_data, req.mode, stationary_data.water_combined,
-        polygon, stationary_data.source_crs,
+        stationary_data.canton_poly, stationary_data.source_crs,
         stationary_data.target_crs, stationary_data.transformer,
-        center=center, network_isochrones=False, input_station=req.input_station
+        center=center, network_isochrones=False, input_station=req.input_station,
+        performance=req.performance
     )
     save_to_database(isochrones)
 

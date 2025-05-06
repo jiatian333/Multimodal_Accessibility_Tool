@@ -9,30 +9,42 @@ Responsibilities:
 
 Functions:
 ----------
-- `shutdown_event()`: FastAPI-compliant shutdown hook.
+- `bind_shutdown_event(app: FastAPI)`: Registers the shutdown hook with a FastAPI app.
 
 Usage:
 ------
-    Register using FastAPI’s `@app.on_event("shutdown")`.
-
-Example:
---------
-    from app.lifecycle.shutdown import shutdown_event
-    app.add_event_handler("shutdown", shutdown_event)
+    from app.lifecycle.shutdown import bind_shutdown_event
+    bind_shutdown_event(app)
 """
 
 import logging
+from fastapi import FastAPI
 
 from app.data.distance_storage import distance_cache
 
 logger = logging.getLogger(__name__)
 
-async def shutdown_event() -> None:
+def bind_shutdown_event(app: FastAPI) -> None:
     """
-    Asynchronously flushes in-memory distance cache to disk on shutdown. 
+    Registers a shutdown event handler on the given FastAPI app.
 
-    Prevents loss of computed nearest-station mappings and enables cold-start continuity.
+    Args:
+        app (FastAPI): The FastAPI application instance.
+
+    Returns:
+        None
     """
-    logger.info("Shutting down: Saving distance cache to disk...")
-    await distance_cache.save()
-    logger.info("Distance cache persisted successfully.")
+
+    @app.on_event("shutdown")
+    async def shutdown_event() -> None:
+        """
+        Asynchronously flushes in-memory distance cache to disk on shutdown.
+
+        Prevents loss of computed nearest-station mappings and enables cold-start continuity.
+
+        Returns:
+            None
+        """
+        logger.info("Shutting down: Saving distance cache to disk...")
+        await distance_cache.save()
+        logger.info("Distance cache persisted successfully.")

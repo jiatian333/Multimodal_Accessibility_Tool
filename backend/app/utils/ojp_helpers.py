@@ -16,7 +16,7 @@ Key Functions:
 --------------
 - `process_trip_request`: Sends a trip request for routing between origin and destination.
 - `location_ojp`: Requests location-based POIs (e.g., stops, rentals) using OJP.
-- `process_and_get_travel_time`: Orchestrates OJP or walking network duration estimates.
+- `query_ojp_travel_time`: Generic travel time request with customizable parsing logic.
 
 Exceptions:
 -----------
@@ -27,18 +27,18 @@ Usage:
     from app.utils.ojp_helpers import (
         process_trip_request,
         location_ojp,
-        process_and_get_travel_time,
+        query_ojp_travel_time,
         RateLimitExceededError
     )
 """
 
 
 import logging
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union, Callable
 
 from shapely.geometry import Point
 
-from app.core.config import ENDPOINT
+from app.core.config import ENDPOINT, RENTAL_MODES, TransportModes
 from app.requests.build_request import (
     create_trip_request, create_location_request, send_request
 )
@@ -152,6 +152,76 @@ async def location_ojp(
     
     logger.debug(f"Received {len(destinations)} destinations from OJP for point {random_point}")
     return destinations, modes
+
+async def query_ojp_travel_time(
+    start: Point,
+    end: Point,
+    mode: TransportModes,
+    mode_xml: str,
+    timestamp: str,
+    arr: str,
+    parse_fn: Callable[[str, TransportModes], Union[float, List[float], None]]
+) -> Optional[float]:
+    """
+    Queries the OJP API for a travel duration between two geographic points.
+
+    This function encapsulates request sending and error handling, delegating response parsing
+    to a user-specified function (parse_fn).
+
+    Args:
+        start (Point): Origin in EPSG:4326.
+        end (Point): Destination in EPSG:4326.
+        mode (str): Transport mode name.
+        mode_xml (str): OJP-compatible XML string for the selected travel mode.
+        timestamp (str): ISO 8601 timestamp representing the request time.
+        arr (str):ISO 8601 timestamp for requested arrival
+        parse_fn (Callable): Function to parse XML response; should accept (xml: str, mode: TransportModes)
+                             and return either float, list of floats, or None.
+    Returns:
+        Optional[float]:
+            - Travel time in minutes.
+            - None if the response is invalid or undecodable.
+    
+    Raises:
+        RateLimitExceededError: If a 429 status code is returned from the OJP API.
+    """
+    if mode in RENTAL_MODES:
+        extension_start, extension_end = "<ojp:Extension>", "</ojp:Extension>"
+    else:
+        extension_start = extension_end = ""
+
+    logger.debug(f"Sending OJP request: mode={mode}, from={start} to={end}")
+    response, status_code = await process_trip_request(
+        start, end, mode_xml,
+        extension_start=extension_start,
+        extension_end=extension_end,
+        arr=arr,
+        timestamp=timestamp,
+        num_results=1
+    )
+
+    logger.debug(f"Received status check: {status_code} from OJP.")
+
+    if "429" in status_code:
+        raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
+    if any(err in status_code for err in ["/ data error!", "/ no valid response!", "/ no trip found!"]):
+        logger.warning(f"No valid response from OJP. Reason: {status_code}")
+        return None
+    if "/ same station!" in status_code:
+        logger.debug("Start and end are interpreted as the same station.")
+        return 0.0
+    
+    duration = parse_fn(response, mode)
+    
+    if not duration:
+        logger.warning("Could not decode duration from OJP response.")
+        return None
+    
+    if isinstance(duration, list):
+        duration = duration[0]
+    
+    logger.debug(f"Extracted travel time: {duration:.2f} min from start={start} to end={end} using mode={mode}.")
+    return duration
 
 class RateLimitExceededError(Exception):
     """Custom exception raised when the API returns a 429 status code."""

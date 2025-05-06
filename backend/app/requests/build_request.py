@@ -166,50 +166,13 @@ def create_location_request(
         xml_request = xml_request.replace(placeholder, value)
 
     return xml_request
-
-'''last_reset_time = time.monotonic()
-
+        
 async def enforce_rate_limit():
     """
-    Enforces bursty rate limit: allows up to RATE_LIMIT requests quickly,
-    then pauses for RATE_PERIOD before allowing another burst.
-    """
-    global last_reset_time
+    Enforces a burst-friendly rolling rate limit with a buffer to prevent hitting exact API quota.
 
-    async with RateLock:
-        now = time.monotonic()
-
-        # Initialize or reset if window expired
-        if now - last_reset_time > RATE_PERIOD:
-            call_timestamps.clear()
-            last_reset_time = now
-
-        if len(call_timestamps) >= RATE_LIMIT:
-            wait_time = RATE_PERIOD - (now - last_reset_time)
-            await asyncio.sleep(wait_time)
-
-            # Reset after waiting
-            now = time.monotonic()
-            call_timestamps.clear()
-            last_reset_time = now
-
-        call_timestamps.append(now)'''
-
-'''async def enforce_rate_limit():
-    """
-    Asynchronously enforces a global request rate limit for OJP API access.
-
-    It tracks recent request timestamps and delays further requests if the number
-    of requests within the defined `RATE_PERIOD` exceeds the configured `RATE_LIMIT`.
-
-    This ensures compliance with external API quotas.
-
-    Behavior:
-        - If the current request window is full, pauses execution until one slot clears.
-        - Uses `RateLock` to synchronize across concurrent callers.
-
-    Raises:
-        asyncio.CancelledError: If the coroutine is cancelled during sleep.
+    Allows quick bursts up to RATE_LIMIT per RATE_PERIOD seconds, and then sleeps just enough
+    (with a buffer) to avoid being blocked by the rate limiter.
     """
     async with RateLock:
         now = time.monotonic()
@@ -217,26 +180,14 @@ async def enforce_rate_limit():
             call_timestamps.popleft()
 
         if len(call_timestamps) >= RATE_LIMIT:
-            wait_time = RATE_PERIOD - (now - call_timestamps[0])
-            await asyncio.sleep(wait_time)
-        
-        call_timestamps.append(time.monotonic())'''
-
-async def enforce_rate_limit():
-    """
-    Ensures that each request is spaced by at least MIN_SPACING seconds.
-    Enforces spacing across concurrent tasks using a global RateLock.
-    """
-    global last_request_time
-
-    async with RateLock:
-        now = time.monotonic()
-        wait_time = 0.8 - (now - last_request_time)
-
-        if wait_time > 0:
+            wait_time = RATE_PERIOD - (now - call_timestamps[0]) + 1
             await asyncio.sleep(wait_time)
 
-        last_request_time = time.monotonic()
+            now = time.monotonic()
+            while call_timestamps and now - call_timestamps[0] > RATE_PERIOD:
+                call_timestamps.popleft()
+
+        call_timestamps.append(time.monotonic())
 
 async def send_request(xml_request: str, endpoint: str) -> Tuple[str, int]:
     """

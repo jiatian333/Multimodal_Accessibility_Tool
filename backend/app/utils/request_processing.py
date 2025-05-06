@@ -49,8 +49,7 @@ from shapely.geometry import Point, Polygon
 from shapely.ops import transform
 
 from app.core.config import (
-    USE_RTREE_SEARCH, WALKING_NETWORK, 
-    TransportModes, RENTAL_MODES
+    USE_RTREE_SEARCH, WALKING_NETWORK, TransportModes
 )
 from app.core.data_types import TravelData
 from app.requests.parse_response import (
@@ -60,8 +59,7 @@ from app.utils.filtering_locations import (
     polygon_filter, filter_destinations
 )
 from app.utils.ojp_helpers import (
-    process_trip_request, location_ojp, 
-    RateLimitExceededError
+    query_ojp_travel_time, location_ojp
 )
 from app.utils.rtree_structure import find_nearest
 from app.utils.routing import estimated_walking_time
@@ -163,10 +161,10 @@ async def process_and_get_travel_time(
     transformer: Transformer
 ) -> Optional[float]:
     """
-    Sends a trip request to OJP and extracts the travel time in minutes.
+    Computes the travel duration between two points using either the local walking network or OJP API.
 
-    Uses a local walking network for 'walk' mode if enabled,
-    otherwise relies on OJP response parsing.
+    For walk trips and short distances, local heuristics or walking graph estimates are used.
+    For all other modes, sends a request to OJP and extracts the travel time from the response.
 
     Args:
         start (Point): Origin location in EPSG:4326.
@@ -198,39 +196,14 @@ async def process_and_get_travel_time(
         logger.debug("Using walking network to estimate travel time.")
         return estimated_walking_time(start, end, G)
     
-    if mode in RENTAL_MODES:
-        extension_start = "<ojp:Extension>"
-        extension_end = "</ojp:Extension>"
-    else:
-        extension_start, extension_end = "", ""
-        
-    logger.debug(f"Sending OJP request: mode={mode}, from={start} to={end}")
-    response, check = await process_trip_request(
-        start, end, mode_xml,
-        extension_start=extension_start,
-        extension_end=extension_end,
-        arr=arr,
-        timestamp=timestamp,
-        num_results=1
+    duration = await query_ojp_travel_time(
+        start,
+        end,
+        mode,
+        mode_xml,
+        timestamp,
+        arr,
+        parse_fn=lambda xml, m: decode_duration(j) if (j := parse_trip_response(xml, m)) else []
     )
-    
-    logger.debug(f"Received status check: {check} from OJP.")
 
-    if "429" in check:
-        raise RateLimitExceededError("Rate limit exceeded. Exiting loop.")
-    if any(err in check for err in ["/ data error!", "/ no valid response!", "/ no trip found!"]):
-        logger.warning(f"No valid response from OJP. Reason: {check}")
-        return None
-    if "/ same station!" in check:
-        logger.debug("Start and end are interpreted as the same station.")
-        return 0.0
-
-    journeys = parse_trip_response(response, mode)
-    duration = decode_duration(journeys) if journeys else []
-
-    if not duration:
-        logger.warning("Could not decode duration from OJP response.")
-        return None
-    
-    logger.debug(f"Extracted travel time: {duration:.2f} min from start={start} to end={end} using mode={mode}.")
     return duration

@@ -20,13 +20,13 @@ Returns
 from typing import List, Union, Optional
 
 import geopandas as gpd
-from shapely.geometry import Polygon, MultiPolygon, GeometryCollection
+from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 from pyproj import CRS
 
 def extract_unsampled_area(
     area_polygon: Polygon,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     isochrones_gdf: gpd.GeoDataFrame
 ) -> MultiPolygon:
     """
@@ -34,7 +34,7 @@ def extract_unsampled_area(
 
     Args:
         area_polygon (Polygon): Full area boundary.
-        water_combined (GeometryCollection): Combined water features (e.g., rivers, lakes).
+        water_combined (MultiPolygon): Combined water features (e.g., rivers, lakes).
         isochrones_gdf (GeoDataFrame): Existing isochrone coverage.
 
     Returns:

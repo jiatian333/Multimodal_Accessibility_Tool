@@ -162,6 +162,7 @@ async def store_point_travel_time(
     travel_data: TravelData):
     """
     Asynchronously stores travel times from a center point to a list of points.
+    If data already exists for the center point, new entries are appended.
 
     Args:
         mode (TransportModes): Transport mode.
@@ -171,7 +172,12 @@ async def store_point_travel_time(
         travel_data (TravelData): Data structure to store the result.
     """
     async with TravelDataLock:
-        travel_data[mode]["point_isochrones"][center] = {
-            "points": points,
-            "travel_times": travel_times
-        }
+        entry = travel_data[mode]["point_isochrones"].get(center)
+        if entry:
+            entry["points"].extend(points)
+            entry["travel_times"].extend(travel_times)
+        else:
+            travel_data[mode]["point_isochrones"][center] = {
+                "points": points,
+                "travel_times": travel_times
+            }

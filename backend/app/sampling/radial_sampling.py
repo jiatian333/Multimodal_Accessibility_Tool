@@ -19,8 +19,8 @@ from typing import List, Optional
 
 import geopandas as gpd
 import numpy as np
-from pyproj import CRS
-from shapely.geometry import GeometryCollection, Point, Polygon
+from pyproj import CRS, Transformer
+from shapely.geometry import MultiPolygon, Point, Polygon
 from sklearn.cluster import KMeans
 
 from app.core.config import SEED, TransportModes
@@ -28,12 +28,13 @@ from app.core.config import SEED, TransportModes
 def generate_radial_grid(
     center_point: Point,
     polygon: Polygon,
-    water_mask: GeometryCollection,
+    water_mask: MultiPolygon,
     max_radius: float,
+    initial_crs: CRS,
     target_crs: CRS,
-    initial_crs: CRS, 
     mode: TransportModes,
     performance: bool,
+    transformer: Transformer,
     num_rings: Optional[int] = None,
     base_points: Optional[int] = None,
     offset_range: Optional[int] = None,
@@ -43,18 +44,19 @@ def generate_radial_grid(
     Generate a radial grid of sample points around a center point.
 
     Points are spaced in concentric rings and filtered to avoid water bodies
-    and remain inside a bounding polygon. Optional clustering limits the
-    total number of points based on performance settings.
+    and remain inside a bounding polygon (except for performance mode). 
+    Optional clustering limits the total number of points based on performance settings.
 
     Args:
         center_point (Point): Center of the radial grid (EPSG:4326).
         polygon (Polygon): Study area boundary.
-        water_mask (GeometryCollection): Areas to exclude (e.g., lakes, rivers).
+        water_mask (MultiPolygon): Areas to exclude (e.g., lakes, rivers).
         max_radius (float): Maximum radius for sampling in meters.
         target_crs (CRS): Projected CRS for distance calculations (e.g., EPSG:2056).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         mode (TransportModes): Transport mode for grid density adjustments.
         performance (bool): Use faster/leaner configuration.
+        transformer (Transformer): Transforms data from initial crs to target crs.
         num_rings (Optional[int]): Override number of concentric rings.
         base_points (Optional[int]): Base number of points per ring.
         offset_range (Optional[int]): Maximum random offset applied to each point in meters.
@@ -70,21 +72,27 @@ def generate_radial_grid(
         num_rings = num_rings or (5 if performance else 6)
         base_points = base_points or 8
         offset_range = offset_range or 50
-        max_points = max_points or (50 if performance else 100)
+        max_points = max_points or (50 if performance else 99)
     elif mode in ['cycle', 'bicycle_rental', 'escooter_rental']:
         num_rings = num_rings or (6 if performance else 10)
         base_points = base_points or 7
         offset_range = offset_range or 100
-        max_points = max_points or (50 if performance else 200)
+        max_points = max_points or (50 if performance else 199)
     else:
         num_rings = num_rings or (7 if performance else 12)
         base_points = base_points or 6
         offset_range = offset_range or 150
-        max_points = max_points or (50 if performance else 250)
+        max_points = max_points or (50 if performance else 249)
     
     water_proj = gpd.GeoSeries(water_mask, crs=initial_crs).to_crs(target_crs).iloc[0]
-    polygon_proj = gpd.GeoSeries(polygon, crs=initial_crs).to_crs(target_crs).iloc[0]
-    center_proj = gpd.GeoSeries([center_point], crs=initial_crs).to_crs(target_crs).geometry.iloc[0]
+    
+    if not performance:
+        poly_coords = np.array(polygon.exterior.coords)
+        poly_x, poly_y = transformer.transform(poly_coords[:, 0], poly_coords[:, 1])
+        polygon_proj = Polygon(zip(poly_x, poly_y))
+
+    center_x, center_y = transformer.transform(center_point.x, center_point.y)
+    center_proj = Point(center_x, center_y)
 
     selected_points: List[Point] = []
 
@@ -97,9 +105,10 @@ def generate_radial_grid(
 
     for dx, dy in extra_offsets:
         pt = Point(center_proj.x + dx, center_proj.y + dy)
-        if polygon_proj.contains(pt) and not water_proj.contains(pt):
-            point_wgs84 = gpd.GeoSeries([pt], crs=target_crs).to_crs(initial_crs).geometry.iloc[0]
-            selected_points.append(point_wgs84)
+        if (performance and not water_proj.contains(pt)) or \
+            (not performance and polygon_proj.contains(pt) and not water_proj.contains(pt)):
+            lon, lat = transformer.transform(pt.x, pt.y, direction='INVERSE')
+            selected_points.append(Point(lon, lat))
 
     # --- Full radial pattern ---
     for i in range(1, num_rings + 1):
@@ -113,17 +122,18 @@ def generate_radial_grid(
 
         for dx, dy in offsets:
             pt = Point(center_proj.x + dx, center_proj.y + dy)
-            if polygon_proj.contains(pt) and not water_proj.contains(pt):
-                selected_points.append(
-                    gpd.GeoSeries([pt], crs=target_crs).to_crs(initial_crs).geometry.iloc[0]
-                )
+            if (performance and not water_proj.contains(pt)) or \
+                (not performance and polygon_proj.contains(pt) and not water_proj.contains(pt)):
+                lon, lat = transformer.transform(pt.x, pt.y, direction='INVERSE')
+                selected_points.append(Point(lon, lat))
 
     # --- Optional: clustering to reduce excessive points ---
-    if len(selected_points) > max_points - 1:
+    if len(selected_points) > max_points:
         arr = np.array([(pt.x, pt.y) for pt in selected_points])
-        kmeans = KMeans(n_clusters=max_points - 1, random_state=SEED, n_init=10).fit(arr)
+        kmeans = KMeans(n_clusters=max_points, random_state=SEED, n_init=10).fit(arr)
         selected_points = [Point(x, y) for x, y in kmeans.cluster_centers_]
-
-    selected_points.append(center_point)
+    
+    if not performance:
+        selected_points.append(center_point)
     
     return selected_points

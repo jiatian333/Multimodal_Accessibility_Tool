@@ -26,10 +26,8 @@ import networkx as nx
 import numpy as np
 import osmnx as ox
 from geopandas import GeoDataFrame
-from shapely.geometry import Polygon, GeometryCollection
+from shapely.geometry import Polygon, MultiPolygon
 from pyproj import CRS
-
-from app.core.config import CITY_AREA
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ def calculate_intersections_per_grid(
     graph: nx.MultiDiGraph,
     nodes: GeoDataFrame,
     polygon: Polygon,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     grid_size: int = 500
 ) -> List[int]:
     """
@@ -47,7 +45,7 @@ def calculate_intersections_per_grid(
         graph (nx.MultiDiGraph): The transportation network graph.
         nodes (GeoDataFrame): GeoDataFrame containing node geometries.
         polygon (Polygon): The bounding polygon.
-        water_combined (GeometryCollection): Union of water/river geometries to exclude.
+        water_combined (MultiPolygon): Union of water/river geometries to exclude.
         grid_size (int, optional): Size of the square grid cells in meters. Default is 500.
 
     Returns:
@@ -88,7 +86,7 @@ def save_and_load_intersections(
     mode: str,
     target_crs: CRS,
     polygon: Polygon,
-    water_combined: GeometryCollection,
+    water_combined: MultiPolygon,
     grid_size: int,
     filename: Path,
     graph: nx.MultiDiGraph
@@ -100,7 +98,7 @@ def save_and_load_intersections(
         mode (str): Transport mode ('walk', 'bike', 'drive').
         target_crs (CRS): Target coordinate reference system for projection.
         polygon (Polygon): City boundary polygon.
-        water_combined (GeometryCollection): Combined water/river geometries.
+        water_combined (MultiPolygon): Combined water/river geometries.
         grid_size (int): Size of grid cells in meters.
         filename (Path): Path to pickle file for saving/loading intersection data.
         graph (nx.MultiDiGraph): Graph of the city area, varies depending on the mode.

@@ -276,8 +276,8 @@ async def resolve_final_destination(
 
 async def compute_and_cache_total_travel_time(
     mode: TransportModes,
-    mode_xml: str,
-    travel_mode: str,
+    mode_xml: Optional[str],
+    travel_mode: Optional[str],
     current_point: Point,
     rental_stored: bool,
     rental: bool,
@@ -303,8 +303,8 @@ async def compute_and_cache_total_travel_time(
 
     Args:
         mode (TransportModes): Current mode.
-        mode_xml (str): XML format for OJP.
-        travel_mode (str): Mapped internal travel mode.
+        mode_xml (Optional[str]): XML format for OJP. None if rental_stored.
+        travel_mode (Optional[str]): Mapped internal travel mode. None if rental_stored.
         current_point (Point): Start of travel.
         rental_stored (bool): Whether data is cached.
         rental (bool): Whether mode uses rental logic.

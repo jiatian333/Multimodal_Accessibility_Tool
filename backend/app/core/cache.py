@@ -41,12 +41,15 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+import geopandas as gpd
 from networkx import MultiDiGraph
 import osmnx as ox
 import pandas as pd
 from pyproj import CRS, Transformer
 from rtree.index import Index
-from shapely.geometry import GeometryCollection, Polygon
+from shapely.geometry import Polygon, MultiPolygon
+from shapely.ops import unary_union
+from shapely.validation import make_valid
 from tqdm import tqdm
 
 from app.core.config import CITY_AREA, NETWORK_AREA, SOURCE_CRS, TARGET_CRS, GRAPH_DIR
@@ -73,7 +76,7 @@ class StationaryData:
         transformer (Transformer): Transformer between WGS84 and LV95.
         city_poly (Polygon): Merged polygon for the city.
         canton_poly (Polygon): Merged polygon for the canton.
-        water_combined (GeometryCollection): Union of water bodies and rivers.
+        water_combined (MultiPolygon): Union of water bodies and rivers.
         G_city (MultiDiGraph): OSM walking graph for the city area.
         G_canton (MultiDiGraph): OSM walking graph for the canton area.
         public_transport_stations (pd.DataFrame): All available PT station metadata.
@@ -88,7 +91,7 @@ class StationaryData:
 
         self.city_poly: Optional[Polygon] = None
         self.canton_poly: Optional[Polygon] = None
-        self.water_combined: Optional[GeometryCollection] = None
+        self.water_combined: Optional[MultiPolygon] = None
 
         self.G_city: Optional[MultiDiGraph] = None
         self.G_canton: Optional[MultiDiGraph] = None
@@ -152,12 +155,16 @@ class StationaryData:
 
     def _load_water(self) -> None:
         """
-        Loads and combines water features (natural water + waterways) for the canton area.
+        Loads, combines and cleans water features (natural water + waterways) for the canton area.
         This is used to exclude unwalkable water zones from sampling or graph traversal.
-        """
-        water = ox.features_from_place(NETWORK_AREA, {"natural": "water"}).geometry.union_all()
-        rivers = ox.features_from_place(NETWORK_AREA, {"waterway": True}).geometry.union_all()
-        self.water_combined = water.union(rivers)
+        """        
+        water = ox.features_from_place(NETWORK_AREA, {"natural": "water"}).geometry
+        combined = water[water.geom_type.isin(["Polygon", "MultiPolygon"])]
+
+        combined = combined[~combined.is_empty & combined.notnull()]
+        combined = combined[combined.is_valid]
+        combined = combined.apply(make_valid)
+        self.water_combined = unary_union(combined)
                 
     def _load_graph_generic(self, city_file: str, canton_file: str, 
                              city_area: str, canton_area: str, 
