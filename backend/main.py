@@ -27,6 +27,7 @@ from app.core.env import set_environment_variables
 set_environment_variables()
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.compute import router as compute_router
 from app.core.config import API_PREFIX
@@ -37,6 +38,15 @@ from app.lifecycle.shutdown import bind_shutdown_event
 setup_logging()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500"],  # ← Stelle sicher, dass das exakt dein Frontend ist
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(compute_router, prefix=API_PREFIX, tags=["isochrones"])
 
 bind_startup_event(app)
