@@ -210,7 +210,7 @@
   </div>
 
   <h1>Last-Mile Connectivity Analysis of Zurich</h1>
-  <button id="referenceBtn" class="reference-button-fixed">Reference</button>
+  <button id="referenceBtn" class="reference-button-fixed">Project Info</button>
   <div class="info-button-container">
     <button id="infoBtn" class="info-button">What are the modes?</button>
   </div>
@@ -792,6 +792,34 @@ function updateDynamicLayersForStation(stationName) {
     "Train Stations": trainLayerGroup
   }, { collapsed: false }).addTo(map);
 }
+
+
+async function runTest() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/api/compute/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: "car_sharing",
+        network_isochrones: false,
+        input_station: "Zürich Triemli",
+        performance: false,
+        arrival_time: new Date("2025-04-27T14:30:00.000Z").toISOString(),
+        timestamp: new Date().toISOString(),
+        force_update: false
+      })
+    });
+
+    const data = await response.json();
+    console.log("✅ API Response:");
+    console.dir(data);
+  } catch (error) {
+    console.error("❌ Request failed:", error);
+  }
+}
+
+runTest();
+
 
   </script>
   
