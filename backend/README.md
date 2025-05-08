@@ -86,6 +86,7 @@ templates/                    # XML templates for OJP requests
 
 - All computations use async true parallelism under the hood for maximum speed
 - Embedded metadata (travel time, origin, mode)
+- Performance mode enables fast computation (~20 seconds) of point isochrones for all train/tram/bus stations in Switzerland. This improved performance comes at the cost of slightly lower accuracy and reduced radius. It is crucial to note that normal network and point isochrones are completely monomodal trips, whereas performance point isochrones can contain public transport legs to reduce walking times in low accessibility areas. The concrete modes and stations are visualized accordingly in the frontend. 
 
 ### 📍 Strategy Comparison
 

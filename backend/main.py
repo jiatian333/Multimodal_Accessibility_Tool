@@ -9,6 +9,8 @@ Key Responsibilities:
 - Sets up unified structured logging.
 - Preloads stationary geospatial data at startup (graphs, polygons, stations).
 - Instantiates the FastAPI app and registers API routes.
+- Configures CORS middleware to allow browser-based cross-origin requests
+  from the designated frontend application.
 
 Application Lifecycle:
 -----------------------
@@ -30,7 +32,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.compute import router as compute_router
-from app.core.config import API_PREFIX
+from app.core.config import API_PREFIX, FRONTEND
 from app.core.logger import setup_logging
 from app.lifecycle.startup import bind_startup_event
 from app.lifecycle.shutdown import bind_shutdown_event
@@ -41,12 +43,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],  # ← Stelle sicher, dass das exakt dein Frontend ist
+    allow_origins=[FRONTEND],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.include_router(compute_router, prefix=API_PREFIX, tags=["isochrones"])
 
 bind_startup_event(app)

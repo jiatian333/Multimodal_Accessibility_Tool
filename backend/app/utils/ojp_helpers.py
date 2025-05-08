@@ -160,13 +160,16 @@ async def query_ojp_travel_time(
     mode_xml: str,
     timestamp: str,
     arr: str,
-    parse_fn: Callable[[str, TransportModes], Union[float, List[float], None]]
-) -> Optional[float]:
+    parse_fn: Callable[
+        [str, TransportModes],
+        Union[float, List[float], Tuple[float, List[str], List[str]], None]
+    ]
+) -> Optional[Union[float, Tuple[float, List[str], List[str]]]]:
     """
     Queries the OJP API for a travel duration between two geographic points.
 
-    This function encapsulates request sending and error handling, delegating response parsing
-    to a user-specified function (parse_fn).
+    This function sends an OJP trip request and uses a customizable parser function
+    to extract either a simple duration or full metadata (duration, used modes, stations).
 
     Args:
         start (Point): Origin in EPSG:4326.
@@ -175,12 +178,17 @@ async def query_ojp_travel_time(
         mode_xml (str): OJP-compatible XML string for the selected travel mode.
         timestamp (str): ISO 8601 timestamp representing the request time.
         arr (str):ISO 8601 timestamp for requested arrival
-        parse_fn (Callable): Function to parse XML response; should accept (xml: str, mode: TransportModes)
-                             and return either float, list of floats, or None.
+        parse_fn (Callable): Parser for the XML response; must accept (xml: str, mode: TransportModes)
+                             and return one of:
+                             - float (duration)
+                             - List[float] (durations per leg)
+                             - Tuple[float, List[str], List[str]] (full trip metadata)
+                             - None (on failure)
     Returns:
-        Optional[float]:
-            - Travel time in minutes.
-            - None if the response is invalid or undecodable.
+        Optional[Union[float, Tuple[float, List[str], List[str]]]]:
+            - Duration in minutes (as float)
+            - Or (duration, [used_modes], [station_names]) if full_trip is enabled
+            - None if no valid response
     
     Raises:
         RateLimitExceededError: If a 429 status code is returned from the OJP API.
@@ -211,14 +219,21 @@ async def query_ojp_travel_time(
         logger.debug("Start and end are interpreted as the same station.")
         return 0.0
     
-    duration = parse_fn(response, mode)
+    result = parse_fn(response, mode)
     
-    if not duration:
+    if not result:
         logger.warning("Could not decode duration from OJP response.")
         return None
     
-    if isinstance(duration, list):
-        duration = duration[0]
+    if isinstance(result, tuple):
+        duration, modes, stations = result
+        logger.debug(f"Travel time: {duration:.2f} min | Modes: {modes} | Stations: {stations}")
+        return duration, modes, stations
+    
+    if isinstance(result, list):
+        duration = result[0]
+    else:
+        duration = result
     
     logger.debug(f"Extracted travel time: {duration:.2f} min from start={start} to end={end} using mode={mode}.")
     return duration

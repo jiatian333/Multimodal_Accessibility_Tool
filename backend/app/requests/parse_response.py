@@ -45,90 +45,81 @@ def check_trip_response(response_text: str, status: int) -> str:
     elif "<siri:ErrorText>TRIP_ORIGINDESTINATIONIDENTICAL</siri:ErrorText>" in response_text:
         status_str += " / same station!"
 
-    return status_str
-
+    return status_str  
+        
 def parse_trip_response(
     response_xml: str,
-    mode: TransportModes,
+    mode: str,
     full_trip: bool = False
-) -> Union[List[str], List[float]]:
+) -> Union[List[str], Optional[tuple[float, List[str], List[str]]]]:
     """
     Parses an OJP TripResponse XML and extracts durations for the requested transport mode.
     
-    When `full_trip` is enabled, also includes durations of adjacent walking legs and returns
-    the total duration in minutes (decoded from ISO 8601 format).
+    - If full_trip is True: returns total duration, all used modes, and names of
+      public transport stations (from LegBoard/LegAlight StopPointName).
+    - If full_trip is False: returns ISO 8601 durations for all legs using that mode.
 
     Args:
         response_xml (str): UTF-8 decoded XML response string from OJP API.
         mode (TransportModes): Target transport mode (e.g., 'self-drive-car').
-        full_trip (bool): If True, also includes durations of adjacent walk legs 
-                          and returns decoded minutes. If False (default), returns 
-                          only mode-specific ISO 8601 duration strings.
+        full_trip (bool): Toggle full trip parsing.
 
     Returns:
-        Union[List[str], List[float]]:
+        Union[List[str], Optional[tuple[float, List[str], List[str]]]]:
             - If full_trip is False: List of ISO 8601 duration strings.
-            - If full_trip is True: List of total durations in float minutes.
+             If full_trip is True: Tuple of (total duration in minutes, [used modes], [station names]).
     """
+
     namespaces = {
         "siri": "http://www.siri.org.uk/siri",
         "ojp": "http://www.vdv.de/ojp"
     }
-    
-    def extract_adjacent_walk_duration(leg: ET.Element) -> Optional[float]:
-        """
-        Extracts duration in minutes for a leg if it is a walking segment.
-
-        Args:
-            leg (ET.Element): The XML element representing a trip leg.
-
-        Returns:
-            Optional[float]: Duration in minutes if the leg is a walking leg, otherwise None.
-        """
-        neighbor_mode = leg.findtext(".//ojp:IndividualMode", default="", namespaces=namespaces)
-        if neighbor_mode.lower() == "walk":
-            duration_str = leg.findtext(".//ojp:Duration", default=None, namespaces=namespaces)
-            if duration_str:
-                return decode_duration([duration_str])
-        return None
 
     root = ET.fromstring(response_xml)
-    results = []
-    default = None if full_trip else 'Unknown'
+    
+    if full_trip:
+        for trip_index, trip_result in enumerate(root.findall(".//ojp:TripResult", namespaces)):
+            trip_legs = trip_result.findall(".//ojp:TripLeg", namespaces)
+            trip = trip_result.find(".//ojp:Trip", namespaces)
+            
+            used_modes = set()
+            includes_target_mode = False
+            station_names = []
 
-    for trip_result in root.findall(".//ojp:TripResult", namespaces):
-        trip_legs = trip_result.findall(".//ojp:TripLeg", namespaces)
+            for leg_index, trip_leg in enumerate(trip_legs):
+                mode_element = trip_leg.find(".//ojp:IndividualMode", namespaces)
+                if mode_element is not None and mode_element.text:
+                    used_modes.add(mode_element.text)
+                    if mode_element.text == mode:
+                        includes_target_mode = True
+                else:
+                    pt_mode = trip_leg.findtext(".//ojp:PtMode", default=None, namespaces=namespaces)
+                    if pt_mode:
+                        used_modes.add(pt_mode)
 
-        for i, trip_leg in enumerate(trip_legs):
-            mode_element = trip_leg.find(".//ojp:IndividualMode", namespaces)
-            if mode_element is not None and mode_element.text == mode:
-                duration = trip_leg.findtext(".//ojp:Duration", default=default, namespaces=namespaces)
-                
-                if not full_trip:
+                for tag in ['LegBoard', 'LegAlight']:
+                    name = trip_leg.find(f".//ojp:{tag}/ojp:StopPointName/ojp:Text", namespaces)
+                    if name is not None and name.text:
+                        if name.text not in station_names:
+                            station_names.append(name.text)
+
+            if includes_target_mode:
+                duration_str = trip.findtext(".//ojp:Duration", default=None, namespaces=namespaces)
+                if duration_str:
+                    total_minutes = decode_duration([duration_str])
+                    if total_minutes is not None:
+                        return (total_minutes, sorted(used_modes), station_names)
+        return None
+
+    else:
+        results = []
+        for trip_result in root.findall(".//ojp:TripResult", namespaces):
+            for trip_leg in trip_result.findall(".//ojp:TripLeg", namespaces):
+                mode_element = trip_leg.find(".//ojp:IndividualMode", namespaces)
+                if mode_element is not None and mode_element.text == mode:
+                    duration = trip_leg.findtext(".//ojp:Duration", default="Unknown", namespaces=namespaces)
                     results.append(duration)
-                    continue
-
-                durations = []
-                if duration:
-                    main_duration = decode_duration([duration])
-                    if main_duration:
-                        durations.append(main_duration)
-
-                if i > 0:
-                    prev_duration = extract_adjacent_walk_duration(trip_legs[i - 1])
-                    if prev_duration:
-                        durations.append(prev_duration)
-
-                if i < len(trip_legs) - 1:
-                    next_duration = extract_adjacent_walk_duration(trip_legs[i + 1])
-                    if next_duration:
-                        durations.append(next_duration)
-
-                if durations:
-                    results.append(sum(durations))
-                break
-
-    return results
+        return results
 
 def decode_duration(duration: List[str]) -> Optional[float]:
     """

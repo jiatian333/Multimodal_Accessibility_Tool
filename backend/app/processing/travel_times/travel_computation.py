@@ -41,7 +41,7 @@ import requests
 import sys
 from typing import (
     Dict, List, Optional, Tuple, Union,
-    Callable, TypeVar, Awaitable
+    Callable, TypeVar, Awaitable, Set
 )
 import networkx as nx
 import pandas as pd
@@ -302,7 +302,7 @@ async def point_travel_times_async(
     timestamp: str,
     transformer: Transformer,
     performance: bool
-) -> Tuple[TravelData, bool, Optional[str]]:
+) -> Tuple[TravelData, bool, Optional[str], Optional[Set[str]], Optional[Set[str]]]:
     """
     Asynchronously computes travel times from a single center point to multiple destination points.
     Uses true CPU parallelism for resolving and routing points efficiently.
@@ -318,7 +318,8 @@ async def point_travel_times_async(
     Batched and parallelized with timeout and error detection (e.g., OJP API).
     
     Note that for performance mode, everything is calculated within OJP internally for improved speed, 
-    at the cost of having less control and more invalid results being returned. 
+    at the cost of having less control and more invalid results being returned. Additionally, 
+    sets of modes and stations that were used during the computation are returned. 
 
     Args:
         travel_data (TravelData): Dictionary storing cached and new travel time results.
@@ -335,21 +336,23 @@ async def point_travel_times_async(
         performance (bool): Toggles the complete use of OJP to boost performance significantly. 
 
     Returns:
-        Tuple[TravelData, bool, Optional[str]]:
+        Tuple[TravelData, bool, Optional[str], Optional[Set[str]], Optional[Set[str]]]:
             - Updated `travel_data` with point-specific times.
             - `True` if the center was resolved and at least some points were processed.
             - Optional rate limit error message (if OJP API fails).
+            - Set of unique modes encountered across all OJP responses (only if performance).
+            - Set of unique public transport station names encountered (only if performance).
     """
     travel_times: List[float] = []
     valid_points: List[Point] = []
     if performance:
-        valid_points, travel_times, rate_limit_flag = await point_travel_times_performance(
+        valid_points, travel_times, rate_limit_flag, modes, stations = await point_travel_times_performance(
             center, points, mode, timestamp, arr
         )
         if not valid_points:
-            return travel_data, False, rate_limit_flag
+            return travel_data, False, rate_limit_flag, modes, stations
         await store_point_travel_time(mode, center, valid_points, travel_times, travel_data)
-        return travel_data, True, rate_limit_flag
+        return travel_data, True, rate_limit_flag, modes, stations
         
     rate_limit_flag: Optional[str] = None
     travel_time_start: float = 0.0
@@ -369,7 +372,7 @@ async def point_travel_times_async(
     )
 
     if start is None:
-        return travel_data, False, None
+        return travel_data, False, None, None, None
     
     async def wrapped_process_single_point(point: Point, *args, **kwargs
     )-> Tuple[Optional[Point], Optional[float]]:
@@ -415,7 +418,7 @@ async def point_travel_times_async(
     logger.info(f"Successfully processed {len(valid_points)} / {len(points)} points.")
 
     await store_point_travel_time(mode, center, valid_points, travel_times, travel_data)
-    return travel_data, True, rate_limit_flag
+    return travel_data, True, rate_limit_flag, None, None
 
 
 async def point_travel_times_performance(
@@ -424,12 +427,12 @@ async def point_travel_times_performance(
     mode: TransportModes,
     timestamp: str,
     arr: str
-) -> Tuple[List[Point], List[float], Optional[str]]:
+) -> Tuple[List[Point], List[float], Optional[str], Set[str], Set[str]]:
     """
     Asynchronously computes OJP travel times from a central point to a list of destination points.
 
-    This function issues OJP trip queries for each destination and parses results using
-    a mode-specific parsing function. It also tracks rate-limiting errors.
+    Uses the OJP API in full_trip mode to extract not only travel durations but also used transport
+    modes and visited public transport stations. Aggregates unique modes/stations across all points.
 
     Args:
         center (Point): Origin location (in EPSG:4326) from which all trips start.
@@ -439,10 +442,12 @@ async def point_travel_times_performance(
         arr (str): Arrival time in ISO-8601 format.
 
     Returns:
-        Tuple[List[Point], List[float], Optional[str]]:
+        Tuple[List[Point], List[float], Optional[str], Set[str], Set[str]]:
             - List of destination points with valid OJP responses.
             - Corresponding list of travel times in minutes.
-            - Error flag (e.g., for rate limit), or None if no issue occurred.
+            - Error string (e.g., "429" rate limit) or None.
+            - Set of unique transport modes used.
+            - Set of unique public transport station names encountered.
     """
     mode_xml = mode_selection(mode)
     travel_mode, _ = get_travel_mode_and_xml(mode)
@@ -461,13 +466,15 @@ async def point_travel_times_performance(
     ]
     valid_points: List[Point] = [p for p in points if center.equals(p)]
     travel_times: List[float] = [0.0] * len(valid_points)
+    all_modes: Set[str] = set()
+    all_stations: Set[str] = set()
 
     raw_results = await run_in_batches(
         [task for _, task in tasks],
         batch_size=50,
         desc="OJP Performance Mode",
         abort_condition=lambda r: isinstance(r, str) and "error: 429" in r,
-        timeout_per_task=60
+        timeout_per_task=120
     )
 
     rate_limit_flag = None
@@ -475,8 +482,14 @@ async def point_travel_times_performance(
         if isinstance(result, str) and "429" in result:
             rate_limit_flag = result
             break
+        elif isinstance(result, tuple):
+            duration, modes, stations = result
+            valid_points.append(point)
+            travel_times.append(duration)
+            all_modes.update(modes)
+            all_stations.update(stations)
         elif isinstance(result, float):
             valid_points.append(point)
             travel_times.append(result)
 
-    return valid_points, travel_times, rate_limit_flag
+    return valid_points, travel_times, rate_limit_flag, all_modes, all_stations

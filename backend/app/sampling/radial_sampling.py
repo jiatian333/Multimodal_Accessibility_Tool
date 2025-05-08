@@ -20,7 +20,7 @@ from typing import List, Optional
 import geopandas as gpd
 import numpy as np
 from pyproj import CRS, Transformer
-from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry import Point, Polygon, MultiPolygon
 from sklearn.cluster import KMeans
 
 from app.core.config import SEED, TransportModes

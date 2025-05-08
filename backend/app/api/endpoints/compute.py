@@ -57,13 +57,13 @@ This module is triggered when a POST request is made to the base endpoint (`/`) 
 a valid JSON payload. It returns a JSON response describing the computation result.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import time
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Request, BackgroundTasks
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, model_validator
 from shapely.geometry import Point
 
 from app.core.cache import stationary_data
@@ -74,7 +74,7 @@ from app.core.config import (
 )
 from app.core.data_types import TravelData
 from app.data.db_operations import check_entry_exists, save_to_database
-from app.data.travel_storage import load_data, save_data
+from app.data.travel_storage import save_data
 from app.data.travel_data import check_travel_data_integrity
 from app.data.update_parking import check_for_updates, filter_and_combine_json_files
 from app.data.update_shared import process_shared_mobility_data
@@ -110,9 +110,27 @@ class ComputeRequest(BaseModel):
     network_isochrones: bool
     input_station: Optional[str] = None
     performance: bool = False
-    arrival_time: Optional[str] = Field(default_factory=lambda: datetime(2025, 4, 27, 14, 30, 0).isoformat())
-    timestamp: Optional[str] = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    arrival_time: Optional[str] = None
+    timestamp: Optional[str] = None
     force_update: Optional[bool] = False
+    
+    @model_validator(mode='before')
+    @classmethod
+    def set_arrival_time_default(cls, data):
+        data = dict(data or {})
+        timestamp_str = data.get("timestamp")
+        
+        if not timestamp_str:
+            timestamp = datetime.now(timezone.utc)
+            data["timestamp"] = timestamp.isoformat()
+        else:
+            timestamp = datetime.fromisoformat(timestamp_str)
+
+        if not data.get("arrival_time"):
+            arrival_time = timestamp + timedelta(hours=1)
+            data["arrival_time"] = arrival_time.isoformat()
+
+        return data
     
 class ComputeResponse(BaseModel):
     """
@@ -126,6 +144,8 @@ class ComputeResponse(BaseModel):
         reason (Optional[str]): Optional explanation for partial or skipped results.
         error (Optional[str]): Description of any error that occurred during processing.
         runtime (Optional[float]): Runtime of the computation in minutes (used for performance benchmarking).
+        used_modes (Optional[List[str]]): All transport modes used in the computed trips (only for performance mode).
+        station_names (Optional[List[str]]): All public transport station names involved (only for performance mode).
     """
     
     status: str
@@ -135,6 +155,8 @@ class ComputeResponse(BaseModel):
     reason: Optional[str] = None
     error: Optional[str] = None
     runtime: Optional[float] = None
+    used_modes: Optional[List[str]] = None
+    station_names: Optional[List[str]] = None
 
 @router.post("/", response_model=ComputeResponse)
 async def compute_isochrones(
@@ -326,7 +348,7 @@ async def compute_point_isochrones(
         stationary_data.transformer
     )
 
-    travel_data, success, rate_limit_flag = await point_travel_times_async(
+    travel_data, success, rate_limit_flag, modes, stations = await point_travel_times_async(
         travel_data, center, points, stationary_data.idx, stationary_data.G_canton, 
         stationary_data.canton_poly, stationary_data.public_transport_stations, 
         mode=req.mode, arr=req.arrival_time, timestamp=req.timestamp, 
@@ -345,6 +367,7 @@ async def compute_point_isochrones(
         return ComputeResponse(
             status="failed", 
             error="Point isochrone computation failed.", 
+            reason=f"Mode: {req.mode} not sufficiently available in this region.",
             runtime=round((time.time() - start) / 60, 2)
         )
 
@@ -358,11 +381,13 @@ async def compute_point_isochrones(
         performance=req.performance
     )
     save_to_database(isochrones)
-
+    
     return ComputeResponse(
         status="success", 
         type="point", 
         station=req.input_station, 
         mode=req.mode, 
+        used_modes=modes,
+        station_names=stations,
         runtime=round((time.time() - start) / 60, 2)
     )
