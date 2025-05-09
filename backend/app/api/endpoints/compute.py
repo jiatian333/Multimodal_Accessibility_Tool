@@ -186,7 +186,8 @@ async def compute_isochrones(
         "network" if req.network_isochrones else "point", req.mode, req.input_station if req.input_station else "null"
     ):
         logger.info("Skipping computation: result already exists in database.")
-        return ComputeResponse(status="skipped", reason="Already exists in database.")
+        return ComputeResponse(status="skipped", reason="Already exists in database.", 
+                               station=req.input_station, mode=req.mode)
     
     if req.force_update:
         logger.info("Force update enabled, updating datasets.")
@@ -359,7 +360,9 @@ async def compute_point_isochrones(
         return ComputeResponse(
             status="failed", 
             error="Rate limit exceeded while computing point isochrones.", 
-            runtime=round((time.time() - start) / 60, 2)
+            runtime=round((time.time() - start) / 60, 2),
+            station=req.input_station, 
+            mode=req.mode
         )
     
     if not success:
@@ -368,7 +371,9 @@ async def compute_point_isochrones(
             status="failed", 
             error="Point isochrone computation failed.", 
             reason=f"Not enough valid responses from the OJP API (no trips found).",
-            runtime=round((time.time() - start) / 60, 2)
+            runtime=round((time.time() - start) / 60, 2),
+            station=req.input_station, 
+            mode=req.mode
         )
 
     background_tasks.add_task(save_data, travel_data)
