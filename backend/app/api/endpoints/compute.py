@@ -367,7 +367,7 @@ async def compute_point_isochrones(
         return ComputeResponse(
             status="failed", 
             error="Point isochrone computation failed.", 
-            reason=f"Mode: {req.mode} not sufficiently available in this region.",
+            reason=f"Not enough valid responses from the OJP API (no trips found).",
             runtime=round((time.time() - start) / 60, 2)
         )
 
