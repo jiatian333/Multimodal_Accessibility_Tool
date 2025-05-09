@@ -194,6 +194,28 @@
   .reference-button-fixed:hover {
     background-color: #f0f0f0;
   }
+  #map-loading-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2000;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+
+.spinner {
+  border: 8px solid #f3f3f3;
+  border-top: 8px solid #007bff;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
   </style>
 </head>
@@ -249,6 +271,10 @@
       </div>
     </div>
   </div>
+  <div id="map-loading-spinner">
+    <div class="spinner"></div>
+  </div>
+  
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script>
@@ -748,64 +774,210 @@ function showLegendForLayer(layerName) {
 }
 showLegendForLayer("geodata_escooter_rental");
 
+/*
+async function updateDynamicLayersForStation(stationName) {
+  document.getElementById("map-loading-spinner").style.display = "block";
+  await runTest(stationName);
+  document.getElementById("map-loading-spinner").style.display = "none";
+  const response = window.apiResponse;
+  
 
-function updateDynamicLayersForStation(stationName) {
-  const makeLayer = (mode, layerId) => {
-    return L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: `GMP_15_Min_City:${layerId}`,
+  if (!response || !response.status) {
+    console.warn("⚠️ Ungültige API-Antwort – Abbruch");
+    return;
+  }
+
+  if (response.status === "skipped") {
+    // ✅ Normale Logik wie bisher
+    const makeLayer = (mode, layerId) => {
+      return L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+        layers: `GMP_15_Min_City:${layerId}`,
+        format: "image/png",
+        transparent: true,
+        attribution: "© GeoServer",
+        CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
+        opacity: 0.7
+      });
+    };
+
+    const newLayers = {
+      "Walk": makeLayer("walk", "geodata_walk"),
+      "Cycle": makeLayer("cycle", "geodata_cycle"),
+      "Cycle Rental": makeLayer("bicycle_rental", "geodata_bicycle_rental"),
+      "E-scooter Rental": makeLayer("escooter_rental", "geodata_escooter_rental"),
+      "Car Sharing": makeLayer("car_sharing", "geodata_car_sharing"),
+      "Self-Drive Car": makeLayer("self-drive-car", "geodata_self_drive_car")
+    };
+
+    // 🧹 Vorherige dynamische Layer entfernen
+    map.eachLayer(layer => {
+      if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
+        map.removeLayer(layer);
+      }
+    });
+
+    // ❌ Alte Layer-Control entfernen
+    if (layersControlDynamic) {
+      map.removeControl(layersControlDynamic);
+    }
+
+    // ✅ Aktiven Layer setzen
+    const activeLayer = newLayers["Walk"];
+    activeLayer.addTo(map);
+    detectLegendFromLayer(activeLayer);
+
+    // 🆕 Neue Layer-Control hinzufügen
+    layersControlDynamic = L.control.layers(newLayers, {
+      "Train Stations": trainLayerGroup
+    }, { collapsed: false }).addTo(map);
+
+  } else if (response.status === "success") {
+    
+    console.log("✅ API-Antwort = success → spätere Logik kommt hier hin.");
+  } else {
+    console.warn("❔ Unerwarteter API-Status:", response.status);
+  }
+}
+
+
+*/
+
+async function updateDynamicLayersForStation(stationName) {
+  document.getElementById("map-loading-spinner").style.display = "block";
+
+  const modeOrder = [
+    "Walk",
+    "Cycle",
+    "Cycle Rental",
+    "E-scooter Rental",
+    "Car Sharing",
+    "Self-Drive Car"
+  ];
+
+  const modeMapping = {
+    "Walk": "walk",
+    "Cycle": "cycle",
+    "Cycle Rental": "bicycle_rental",
+    "E-scooter Rental": "escooter_rental",
+    "Car Sharing": "car_sharing",
+    "Self-Drive Car": "self-drive-car"
+  };
+
+  const newLayers = {};
+  const loadedModes = {};
+
+  // Initial: Platzhalter für alle Modi
+  modeOrder.forEach(label => {
+    newLayers[label] = L.layerGroup(); // leer
+    loadedModes[label] = false;
+  });
+
+  // Erstes Request nur für Walk
+  const firstLabel = "Walk";
+  const firstMode = modeMapping[firstLabel];
+  const firstResponse = await runTest(stationName, firstMode);
+
+  document.getElementById("map-loading-spinner").style.display = "none";
+
+  // Nur weiter, wenn Antwort da ist
+  if (!firstResponse || !firstResponse.status) {
+    console.warn("⚠️ API-Antwort fehlerhaft – Abbruch.");
+    return;
+  }
+
+  const insertLayerFromDB = (mode, label) => {
+    const layer = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+      layers: `GMP_15_Min_City:geodata_${mode}`,
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
       CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
       opacity: 0.7
     });
+    newLayers[label] = layer;
+    loadedModes[label] = true;
   };
 
-  const newLayers = {
-    "Walk": makeLayer("walk", "geodata_walk"),
-    "Cycle": makeLayer("cycle", "geodata_cycle"),
-    "Cycle Rental": makeLayer("bicycle_rental", "geodata_bicycle_rental"),
-    "E-scooter Rental": makeLayer("escooter_rental", "geodata_escooter_rental"),
-    "Car Sharing": makeLayer("car_sharing", "geodata_car_sharing"),
-    "Self-Drive Car": makeLayer("self-drive-car", "geodata_self_drive_car")
-  };
+  if (firstResponse.status === "skipped") {
+    insertLayerFromDB(firstMode, firstLabel);
+  } else if (firstResponse.status === "success") {
+    insertLayerFromDB(firstMode, firstLabel);
+  }
 
-  // 🧹 1. Alte dynamische WMS-Layer von der Karte entfernen
+  // Karte aufräumen
   map.eachLayer(layer => {
     if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
       map.removeLayer(layer);
     }
   });
 
-  // ❌ 2. Alte LayerControl entfernen
   if (layersControlDynamic) {
     map.removeControl(layersControlDynamic);
   }
 
-  // ✅ 3. Einen neuen Layer direkt aktivieren
-  const activeLayer = newLayers["Walk"];
-  activeLayer.addTo(map);
-  detectLegendFromLayer(activeLayer);
+  // Walk (wenn vorhanden) direkt aktivieren
+  if (loadedModes[firstLabel]) {
+    newLayers[firstLabel].addTo(map);
+    detectLegendFromLayer(newLayers[firstLabel]);
+  }
 
-  // 🆕 4. Neue LayerControl erzeugen und zur Karte hinzufügen
-  layersControlDynamic = L.control.layers(newLayers, {
-    "Train Stations": trainLayerGroup
-  }, { collapsed: false }).addTo(map);
+  // LayerControl aufbauen
+  const buildLayerControl = () => {
+    const layers = {};
+    modeOrder.forEach(label => {
+      layers[label] = newLayers[label];
+    });
+
+    if (layersControlDynamic) {
+      map.removeControl(layersControlDynamic);
+    }
+
+    layersControlDynamic = L.control.layers(layers, {
+      "Train Stations": trainLayerGroup
+    }, { collapsed: false }).addTo(map);
+  };
+
+  buildLayerControl();
+
+  // baselayerchange → Reaktion auf Moduswechsel
+  map.on('baselayerchange', async function (e) {
+    const modeLabel = e.name;
+    const modeKey = modeMapping[modeLabel];
+
+    // Wenn bereits geladen, abbrechen
+    if (!modeKey || loadedModes[modeLabel]) return;
+
+    document.getElementById("map-loading-spinner").style.display = "block";
+
+    const result = await runTest(stationName, modeKey);
+
+    document.getElementById("map-loading-spinner").style.display = "none";
+
+    if (!result || !result.status) return;
+
+    if (result.status === "skipped" || result.status === "success") {
+      insertLayerFromDB(modeKey, modeLabel);
+      newLayers[modeLabel].addTo(map);
+      detectLegendFromLayer(newLayers[modeLabel]);
+      buildLayerControl(); // Reihenfolge bleibt fix
+    }
+  });
 }
 
 
-async function runTest() {
+
+async function runTest(stationName, mode) {
   try {
     const response = await fetch('http://127.0.0.1:8000/api/compute/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        mode: "car_sharing",
+        mode: mode,
         network_isochrones: false,
-        input_station: "Zürich Triemli",
-        performance: false,
-        arrival_time: new Date("2025-04-27T14:30:00.000Z").toISOString(),
-        timestamp: new Date().toISOString(),
+        input_station: stationName,
+        performance: true,
+        /*arrival_time: new Date("2025-05-09T09:30:00.000Z").toISOString(),
+        timestamp: new Date().toISOString(),*/
         force_update: false
       })
     });
@@ -813,12 +985,18 @@ async function runTest() {
     const data = await response.json();
     console.log("✅ API Response:");
     console.dir(data);
+    window.apiResponse = data;
+    console.log(apiResponse.status);  
+    console.log(apiResponse.type);   
+    console.log(apiResponse.mode);   
+    console.log(apiResponse.runtime);
+    return data;  // ✅ DAS HAT GEFÄHLT
   } catch (error) {
     console.error("❌ Request failed:", error);
   }
 }
 
-runTest();
+
 
 
   </script>
