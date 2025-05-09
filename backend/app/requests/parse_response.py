@@ -45,7 +45,7 @@ def check_trip_response(response_text: str, status: int) -> str:
     elif "<siri:ErrorText>TRIP_ORIGINDESTINATIONIDENTICAL</siri:ErrorText>" in response_text:
         status_str += " / same station!"
 
-    return status_str  
+    return status_str
         
 def parse_trip_response(
     response_xml: str,

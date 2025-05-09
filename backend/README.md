@@ -8,10 +8,11 @@
 
 - ✅ **Network-based isochrone generation** showing potential deficiencies in first- and last-mile accessibility over an entire network 
 - ✅ **Point-based radial isochrones** displaying accessibility around points (with a focus on train stations)
+- ✅ **Performance mode for on-demand fast computation** of simplified point-based radial isochrones
 - 🚶‍♂️🛴🚲🚗 **Multimodal support** (walk, cycle, car, bicycle rental, e-scooters, car sharing)  
 - ⚡ **True asynchronous & parallel computation** for massive performance boost
 - 📦 Built-in **storage and recovery** of geospatial travel data  
-- 🧠 Smart **routing logic** using OJP API and R-tree acceleration  
+- 🧠 Smart **routing logic** using OJP API, R-tree acceleration and network graphs
 - 🗂 **Modular architecture**, easy to extend or customize 
 
 ---
@@ -38,7 +39,7 @@ templates/                    # XML templates for OJP requests
 
 ---
 
-## ⚙️ Supported Transport Modes
+## ⚙️ Supported Transport Modes (monomodal)
 
 | Mode             | Code             | Walking Legs     | Required POI  |
 |------------------|------------------|------------------|-------------- |
@@ -65,8 +66,8 @@ templates/                    # XML templates for OJP requests
   "network_isochrones": true,
   "input_station": null,
   "performance": false,
-  "arrival_time": "2025-04-13T14:30:00Z",
-  "timestamp": "2025-04-13T14:00:00Z",
+  "arrival_time": "2025-05-23T14:30:00Z",
+  "timestamp": "2025-05-23T14:00:00Z",
   "force_update": false
 }
 ```
@@ -96,6 +97,17 @@ templates/                    # XML templates for OJP requests
 | `point`   | Travel time from a single selected station outward |
 
 ---
+
+### 🔁 Comparison Summary
+
+| Feature                   | `network`   | `point` (normal) | `point` (performance)   |
+| ------------------------- | ----------- | ---------------- | ----------------------- |
+| Monomodal only            | ✅          | ✅              | ❌ Includes PT legs     |
+| Coverage                  | Zurich city | Canton of Zurich | All Switzerland         |
+| Accuracy                  | High        | High             | Medium (reduced radius) |
+| Speed                     | Slow        | Medium           | ⚡ Fast (\~10–25s)      |
+| Water bodies respected    | ✅          | ✅              | ❌ Skipped              |
+| Station metadata returned | ❌          | ❌              | ✅ Modes + stations     |
 
 ## 🛠 Setup & Installation
 
@@ -136,7 +148,7 @@ GeoDataFrames are persisted to a PostgreSQL/PostGIS database.
 ## 🧠 How It Works
 
 1. Sample origin points via adaptive or radial logic  
-2. Multimodal Routing:
+2. Mode-specific Routing:
   - Walk → rental station or parking (if needed)
   - Main travel (bike, car, etc.)
   - Walk from rental station to destination (if needed) 

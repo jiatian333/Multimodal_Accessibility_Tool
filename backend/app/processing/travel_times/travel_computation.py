@@ -451,9 +451,40 @@ async def point_travel_times_performance(
     """
     mode_xml = mode_selection(mode)
     travel_mode, _ = get_travel_mode_and_xml(mode)
+    
+    valid_points: List[Point] = [p for p in points if center.equals(p)]
+    travel_times: List[float] = [0.0] * len(valid_points)
+    all_modes: Set[str] = set()
+    all_stations: Set[str] = set()
+    
+    async def bind_point_with_result(
+        point: Point, 
+        coro: Awaitable[Union[str, float, Tuple[float, List[str], List[str]], None]]
+    ) -> Tuple[Point, Union[str, float, Tuple[float, List[str], List[str]], None]]:
+        """
+        Executes a coroutine and binds the given point to its result.
+
+        Used to ensure the result can be reliably matched with the point that initiated it.
+
+        Args:
+            point (Point): The destination point.
+            coro (Awaitable): The coroutine to execute.
+
+        Returns:
+            Tuple[Point, Union[str, float, Tuple[float, Set[str], Set[str]]]]: 
+                The original point and its corresponding result.
+        """
+        try:
+            result = await coro
+            return point, result
+        except Exception as e:
+            logger.exception(f"Error while binding point {point}: {e}")
+            return point, f"error: {str(e)}"
 
     tasks = [
-        (p, lambda p=p: query_ojp_travel_time(
+        lambda p=p: bind_point_with_result(
+            p,
+            query_ojp_travel_time(
             center,
             p,
             mode,
@@ -461,16 +492,13 @@ async def point_travel_times_performance(
             timestamp,
             arr,
             parse_fn=lambda xml, _: parse_trip_response(xml, travel_mode, full_trip=True)
-        ))
+            )
+        )
         for p in points if not center.equals(p)
     ]
-    valid_points: List[Point] = [p for p in points if center.equals(p)]
-    travel_times: List[float] = [0.0] * len(valid_points)
-    all_modes: Set[str] = set()
-    all_stations: Set[str] = set()
 
     raw_results = await run_in_batches(
-        [task for _, task in tasks],
+        tasks,
         batch_size=50,
         desc="OJP Performance Mode",
         abort_condition=lambda r: isinstance(r, str) and "error: 429" in r,
@@ -478,7 +506,7 @@ async def point_travel_times_performance(
     )
 
     rate_limit_flag = None
-    for (point, _), result in zip(tasks, raw_results):
+    for point, result in raw_results:
         if isinstance(result, str) and "429" in result:
             rate_limit_flag = result
             break

@@ -227,7 +227,7 @@ async def query_ojp_travel_time(
     
     if isinstance(result, tuple):
         duration, modes, stations = result
-        logger.debug(f"Travel time: {duration:.2f} min | Modes: {modes} | Stations: {stations}")
+        logger.debug(f"Travel time: {duration:.2f} min | Start: {start} | End: {end} | Modes: {modes} | Stations: {stations}")
         return duration, modes, stations
     
     if isinstance(result, list):
