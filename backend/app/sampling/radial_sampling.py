@@ -11,7 +11,7 @@ Functions
 
 Returns
 -------
-- List[Point]: Projected radial points in EPSG:4326 (including center point).
+- List[Point]: Projected radial points in EPSG:4326.
 """
 
 
@@ -19,8 +19,8 @@ from typing import List, Optional
 
 import geopandas as gpd
 import numpy as np
-from pyproj import CRS, Transformer
-from shapely.geometry import Point, Polygon, MultiPolygon
+from pyproj import Transformer
+from shapely.geometry import Point, Polygon
 from sklearn.cluster import KMeans
 
 from app.core.config import SEED, TransportModes
@@ -28,10 +28,9 @@ from app.core.config import SEED, TransportModes
 def generate_radial_grid(
     center_point: Point,
     polygon: Polygon,
-    water_mask: MultiPolygon,
+    water_gdf: gpd.GeoDataFrame,
+    water_sindex: gpd.sindex.SpatialIndex,
     max_radius: float,
-    initial_crs: CRS,
-    target_crs: CRS,
     mode: TransportModes,
     performance: bool,
     transformer: Transformer,
@@ -50,10 +49,9 @@ def generate_radial_grid(
     Args:
         center_point (Point): Center of the radial grid (EPSG:4326).
         polygon (Polygon): Study area boundary.
-        water_mask (MultiPolygon): Areas to exclude (e.g., lakes, rivers).
+        water_gdf (GeoDataFrame): Water bodies (projected).
+        water_sindex (gpd.sindex.SpatialIndex): R-tree index of the water_gdf for fast spatial queries.
         max_radius (float): Maximum radius for sampling in meters.
-        target_crs (CRS): Projected CRS for distance calculations (e.g., EPSG:2056).
-        initial_crs (CRS): CRS of initial data (EPSG:4326).
         mode (TransportModes): Transport mode for grid density adjustments.
         performance (bool): Use faster/leaner configuration.
         transformer (Transformer): Transforms data from initial crs to target crs.
@@ -84,8 +82,6 @@ def generate_radial_grid(
         offset_range = offset_range or 150
         max_points = max_points or (50 if performance else 249)
     
-    water_proj = gpd.GeoSeries(water_mask, crs=initial_crs).to_crs(target_crs).iloc[0]
-    
     if not performance:
         poly_coords = np.array(polygon.exterior.coords)
         poly_x, poly_y = transformer.transform(poly_coords[:, 0], poly_coords[:, 1])
@@ -93,6 +89,23 @@ def generate_radial_grid(
 
     center_x, center_y = transformer.transform(center_point.x, center_point.y)
     center_proj = Point(center_x, center_y)
+    
+    def is_valid(pt: Point) -> bool:
+        """
+        Validates whether a point can be sampled:
+        
+        - Must not intersect with water bodies (always enforced).
+        - Must lie within the polygon boundary (only when performance=False).
+
+        Args:
+            pt (Point): The candidate point to validate (projected CRS).
+
+        Returns:
+            bool: True if the point satisfies spatial constraints.
+        """
+        hits = list(water_sindex.intersection(pt.bounds))
+        water_ok = not hits or not water_gdf.iloc[hits].intersects(pt).any()
+        return water_ok if performance else polygon_proj.contains(pt) and water_ok
 
     selected_points: List[Point] = []
 
@@ -105,8 +118,7 @@ def generate_radial_grid(
 
     for dx, dy in extra_offsets:
         pt = Point(center_proj.x + dx, center_proj.y + dy)
-        if (performance and not water_proj.contains(pt)) or \
-            (not performance and polygon_proj.contains(pt) and not water_proj.contains(pt)):
+        if is_valid(pt):
             lon, lat = transformer.transform(pt.x, pt.y, direction='INVERSE')
             selected_points.append(Point(lon, lat))
 
@@ -122,8 +134,7 @@ def generate_radial_grid(
 
         for dx, dy in offsets:
             pt = Point(center_proj.x + dx, center_proj.y + dy)
-            if (performance and not water_proj.contains(pt)) or \
-                (not performance and polygon_proj.contains(pt) and not water_proj.contains(pt)):
+            if is_valid(pt):
                 lon, lat = transformer.transform(pt.x, pt.y, direction='INVERSE')
                 selected_points.append(Point(lon, lat))
 

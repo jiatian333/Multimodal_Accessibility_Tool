@@ -12,7 +12,7 @@ Responsibilities:
 -----------------
 - Set up coordinate reference systems and transformations (WGS84 ↔ Swiss LV95).
 - Load and merge urban/cantonal boundaries from OSM.
-- Download and combine water and river features to define unwalkable areas.
+- Download, clean, and cache large water features for exclusion.
 - Retrieve graphs (walk, bike, drive) and save to disk for caching.
 - Load public transport station metadata and build an R-tree index.
 
@@ -39,6 +39,8 @@ Dependencies:
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+import pickle
 from typing import Optional
 
 import geopandas as gpd
@@ -47,12 +49,14 @@ import osmnx as ox
 import pandas as pd
 from pyproj import CRS, Transformer
 from rtree.index import Index
-from shapely.geometry import Polygon, MultiPolygon
-from shapely.ops import unary_union
+from shapely.geometry import Polygon
 from shapely.validation import make_valid
 from tqdm import tqdm
 
-from app.core.config import CITY_AREA, NETWORK_AREA, SOURCE_CRS, TARGET_CRS, GRAPH_DIR
+from app.core.config import (
+    CITY_AREA, NETWORK_AREA, SOURCE_CRS, 
+    TARGET_CRS, GRAPH_DIR, WATER_AREA
+)
 from app.data.public_transport import load_public_transport_stations
 from app.utils.rtree_structure import build_rtree
 
@@ -65,7 +69,7 @@ class StationaryData:
     This class handles:
     - CRS setup and transformation
     - City and canton polygon geometries
-    - Water and river features (combined)
+    - Water features 
     - OSM walking, biking, driving network graphs for city and canton
     - Public transport station data and its R-tree spatial index
 
@@ -76,9 +80,14 @@ class StationaryData:
         transformer (Transformer): Transformer between WGS84 and LV95.
         city_poly (Polygon): Merged polygon for the city.
         canton_poly (Polygon): Merged polygon for the canton.
-        water_combined (MultiPolygon): Union of water bodies and rivers.
-        G_city (MultiDiGraph): OSM walking graph for the city area.
-        G_canton (MultiDiGraph): OSM walking graph for the canton area.
+        water_gdf (GeoDataFrame): Cleaned water features (projected).
+        water_sindex (gpd.sindex.SpatialIndex): Spatial index for fast water intersection checks.
+        G_city (MultiDiGraph): City graph for walking.
+        G_canton (MultiDiGraph): Canton graph for walking.
+        G_bike_city (MultiDiGraph): City graph for biking.
+        G_bike_canton (MultiDiGraph): Canton graph for biking.
+        G_car_city (MultiDiGraph): City graph for driving.
+        G_car_canton (MultiDiGraph): Canton graph for driving.
         public_transport_stations (pd.DataFrame): All available PT station metadata.
         idx (Index): R-tree spatial index for fast nearest-neighbor lookup.
     """
@@ -91,7 +100,8 @@ class StationaryData:
 
         self.city_poly: Optional[Polygon] = None
         self.canton_poly: Optional[Polygon] = None
-        self.water_combined: Optional[MultiPolygon] = None
+        self.water_gdf: Optional[gpd.GeoDataFrame] = None
+        self.water_sindex: Optional[gpd.sindex.SpatialIndex] = None
 
         self.G_city: Optional[MultiDiGraph] = None
         self.G_canton: Optional[MultiDiGraph] = None
@@ -153,18 +163,41 @@ class StationaryData:
         self.city_poly = ox.geocode_to_gdf(CITY_AREA).geometry.union_all()
         self.canton_poly = ox.geocode_to_gdf(NETWORK_AREA).geometry.union_all()
 
-    def _load_water(self) -> None:
+    def _load_water(self, file: Path = GRAPH_DIR / "cached_water.pkl") -> None:
         """
-        Loads, combines and cleans water features (natural water + waterways) for the canton area.
+        Loads and caches valid large water bodies (Polygon and MultiPolygon only).
+        If cached data exists, load from disk. Otherwise, fetch from OSM and cache it.
         This is used to exclude unwalkable water zones from sampling or graph traversal.
-        """        
-        water = ox.features_from_place(NETWORK_AREA, {"natural": "water"}).geometry
-        combined = water[water.geom_type.isin(["Polygon", "MultiPolygon"])]
+        
+        Args:
+            file (Path): Path to local cache file (.pkl).
+        """
+        if file.exists():
+            with open(file, "rb") as f:
+                combined = pickle.load(f)
+                self.water_gdf = gpd.GeoDataFrame(geometry=combined, crs=self.source_crs).to_crs(self.target_crs)
+                self.water_sindex = self.water_gdf.sindex
+                logger.info("Loaded water features from cache.")
+            return
+        
+        try:
+            water = ox.features_from_place(WATER_AREA, {"natural": "water"}).geometry
+            combined = water[water.geom_type.isin(["Polygon", "MultiPolygon"])]
+            combined = combined[~combined.is_empty & combined.notnull()]
+            combined = combined[combined.is_valid]
+            combined = combined.apply(make_valid)
+            combined = combined.reset_index(drop=True)
+            self.water_gdf = gpd.GeoDataFrame(geometry=combined, crs=self.source_crs).to_crs(self.target_crs)
+            self.water_sindex = self.water_gdf.sindex
 
-        combined = combined[~combined.is_empty & combined.notnull()]
-        combined = combined[combined.is_valid]
-        combined = combined.apply(make_valid)
-        self.water_combined = unary_union(combined)
+            with open(file, "wb") as f:
+                pickle.dump(list(combined.geometry), f)
+
+            logger.info("Water features processed and cached locally.")
+
+        except Exception as e:
+            logger.error(f"Error while loading or saving water features: {e}")
+            raise
                 
     def _load_graph_generic(self, city_file: str, canton_file: str, 
                              city_area: str, canton_area: str, 

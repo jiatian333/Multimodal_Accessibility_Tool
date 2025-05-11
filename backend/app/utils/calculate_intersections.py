@@ -25,8 +25,8 @@ from typing import Dict, List
 import networkx as nx
 import numpy as np
 import osmnx as ox
-from geopandas import GeoDataFrame
-from shapely.geometry import Polygon, MultiPolygon
+from geopandas import GeoDataFrame, sindex
+from shapely.geometry import Polygon
 from pyproj import CRS
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ def calculate_intersections_per_grid(
     graph: nx.MultiDiGraph,
     nodes: GeoDataFrame,
     polygon: Polygon,
-    water_combined: MultiPolygon,
+    water_gdf: GeoDataFrame,
+    water_sindex: sindex.SpatialIndex,
     grid_size: int = 500
 ) -> List[int]:
     """
@@ -45,7 +46,8 @@ def calculate_intersections_per_grid(
         graph (nx.MultiDiGraph): The transportation network graph.
         nodes (GeoDataFrame): GeoDataFrame containing node geometries.
         polygon (Polygon): The bounding polygon.
-        water_combined (MultiPolygon): Union of water/river geometries to exclude.
+        water_gdf (GeoDataFrame): Projected water bodies to exclude intersections.
+        water_sindex (sindex.SpatialIndex): Spatial index for water_gdf.
         grid_size (int, optional): Size of the square grid cells in meters. Default is 500.
 
     Returns:
@@ -71,11 +73,14 @@ def calculate_intersections_per_grid(
             if not polygon.intersects(grid_polygon):
                 continue
 
-            grid_intersections = sum(
-                1 for idx in intersections
-                if grid_polygon.intersects(nodes.loc[idx, 'geometry'])
-                and not water_combined.intersects(nodes.loc[idx, 'geometry'])
-            )
+            grid_intersections = 0
+            for idx in intersections:
+                point = nodes.loc[idx, 'geometry']
+                if not grid_polygon.contains(point):
+                    continue
+                hits = list(water_sindex.intersection(point.bounds))
+                if not hits or not water_gdf.iloc[hits].intersects(point).any():
+                    grid_intersections += 1
 
             total_grid_intersections.append(grid_intersections)
 
@@ -86,7 +91,8 @@ def save_and_load_intersections(
     mode: str,
     target_crs: CRS,
     polygon: Polygon,
-    water_combined: MultiPolygon,
+    water_gdf: GeoDataFrame,
+    water_sindex: sindex.SpatialIndex,
     grid_size: int,
     filename: Path,
     graph: nx.MultiDiGraph
@@ -98,7 +104,8 @@ def save_and_load_intersections(
         mode (str): Transport mode ('walk', 'bike', 'drive').
         target_crs (CRS): Target coordinate reference system for projection.
         polygon (Polygon): City boundary polygon.
-        water_combined (MultiPolygon): Combined water/river geometries.
+        water_gdf (GeoDataFrame): Individual water features.
+        water_sindex (sindex.SpatialIndex): Spatial index for water_gdf.
         grid_size (int): Size of grid cells in meters.
         filename (Path): Path to pickle file for saving/loading intersection data.
         graph (nx.MultiDiGraph): Graph of the city area, varies depending on the mode.
@@ -124,7 +131,7 @@ def save_and_load_intersections(
     nodes = nodes.to_crs(target_crs)
 
     intersection_data[mode][grid_size] = calculate_intersections_per_grid(
-        graph, nodes, polygon, water_combined, grid_size
+        graph, nodes, polygon, water_gdf, water_sindex, grid_size
     )
 
     try:

@@ -241,7 +241,8 @@ async def compute_network_isochrones(
     logger.info("Computing network isochrones.")
     random_points = generate_adaptive_sample_points(
         stationary_data.city_poly,
-        stationary_data.water_combined,
+        stationary_data.water_gdf,
+        stationary_data.water_sindex,
         stationary_data.target_crs,
         stationary_data.source_crs,
         mode=req.mode
@@ -263,17 +264,17 @@ async def compute_network_isochrones(
         )
 
     isochrones = generate_isochrones(
-        travel_data, req.mode, stationary_data.water_combined,
-        stationary_data.city_poly, stationary_data.source_crs,
-        stationary_data.target_crs, stationary_data.transformer,
-        network_isochrones=True
+        travel_data, req.mode, stationary_data.city_poly, 
+        stationary_data.source_crs, stationary_data.target_crs, 
+        stationary_data.transformer, stationary_data.water_gdf,
+        stationary_data.water_sindex, network_isochrones=True
     )
 
     if IMPROVE_ISOCHRONES:
         logger.info("Improving isochrones with additional sample points.")
         new_points = sample_additional_points(
             isochrones, stationary_data.city_poly,
-            stationary_data.water_combined,
+            stationary_data.water_gdf,
             stationary_data.target_crs,
             stationary_data.source_crs,
             n_unsampled=100, n_large_isochrones=150
@@ -287,10 +288,10 @@ async def compute_network_isochrones(
         background_tasks.add_task(save_data, travel_data)
 
         isochrones = generate_isochrones(
-            travel_data, req.mode, stationary_data.water_combined,
-            stationary_data.city_poly, stationary_data.source_crs,
-            stationary_data.target_crs, stationary_data.transformer,
-            network_isochrones=True
+            travel_data, req.mode, stationary_data.city_poly, 
+            stationary_data.source_crs, stationary_data.target_crs, 
+            stationary_data.transformer, stationary_data.water_gdf, 
+            stationary_data.water_sindex, network_isochrones=True
         )
 
     save_to_database(isochrones)
@@ -343,10 +344,9 @@ async def compute_point_isochrones(
     max_radius = get_max_radius(req.mode, req.performance)
     
     points = generate_radial_grid(
-        center, stationary_data.canton_poly, stationary_data.water_combined, 
-        max_radius, stationary_data.source_crs,
-        stationary_data.target_crs, req.mode, req.performance, 
-        stationary_data.transformer
+        center, stationary_data.canton_poly, stationary_data.water_gdf, 
+        stationary_data.water_sindex, max_radius, req.mode, 
+        req.performance, stationary_data.transformer
     )
 
     travel_data, success, rate_limit_flag, modes, stations = await point_travel_times_async(
@@ -379,11 +379,11 @@ async def compute_point_isochrones(
     background_tasks.add_task(save_data, travel_data)
     
     isochrones = generate_isochrones(
-        travel_data, req.mode, stationary_data.water_combined,
-        stationary_data.canton_poly, stationary_data.source_crs,
-        stationary_data.target_crs, stationary_data.transformer,
-        center=center, network_isochrones=False, input_station=req.input_station,
-        performance=req.performance
+        travel_data, req.mode, stationary_data.canton_poly, 
+        stationary_data.source_crs, stationary_data.target_crs, 
+        stationary_data.transformer, stationary_data.water_gdf,
+        stationary_data.water_sindex, center=center, network_isochrones=False, 
+        input_station=req.input_station, performance=req.performance
     )
     save_to_database(isochrones)
     

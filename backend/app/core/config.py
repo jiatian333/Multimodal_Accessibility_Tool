@@ -85,6 +85,7 @@ RATE_PERIOD: Final[int] = 60
 
 NETWORK_AREA: Final[str] = "Zürich (Canton), Switzerland"  # Network load extent, larger areas lead to significant performance loss
 CITY_AREA: Final[str] = "Zurich, Zurich, Switzerland"  # Focus area for isochrones
+WATER_AREA: Final[str] = "Switzerland" # Exclude water areas for the entirety of Switzerland
 
 SOURCE_CRS: Final[int] = 4326 # WGS84
 TARGET_CRS: Final[int] = 2056 # Swiss LV95

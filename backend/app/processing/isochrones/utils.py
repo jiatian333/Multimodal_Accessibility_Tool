@@ -5,22 +5,24 @@ This module contains utility functions to:
 - Validate and repair invalid geometries.
 - Post-process and dissolve isochrones with optional clipping by a circular boundary.
 - Extract known points and travel times from multimodal datasets for interpolation.
+- Efficiently subtract water features from geometries (with spatial indexing).
 
 Key Functions:
 --------------
 - validate_geometry(...): Ensures geometry is valid using buffer and make_valid fallback.
 - post_processing(...): Cleans, dissolves, clips, and reprojects isochrone geometries.
 - extract_travel_times(...): Extracts travel point/time pairs for a given mode and computation type.
+- fast_difference_with_water(...): Efficiently subtracts intersecting water areas using spatial indexing.
 """
 
 
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 
 import geopandas as gpd
 import numpy as np
 from pyproj import CRS
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon, MultiPolygon
 from shapely.geometry.base import BaseGeometry
 from shapely.validation import make_valid
 
@@ -143,3 +145,27 @@ def extract_travel_times(
     travel_times = np.array(points_data['travel_times'])
 
     return points, travel_times, center
+
+def fast_difference_with_water(
+    geometry: Union[Polygon, MultiPolygon], 
+    water_gdf: gpd.GeoDataFrame, 
+    sindex: gpd.sindex.SpatialIndex
+) -> Union[Polygon, MultiPolygon]:
+    """
+    Efficiently subtracts overlapping water geometries from a target geometry.
+
+    Optimized by limiting the spatial difference to only those water features
+    intersecting the geometry's bounds.
+
+    Args:
+        geometry (Union[Polygon, MultiPolygon]): The geometry to clip.
+        water_gdf (gpd.GeoDataFrame): GeoDataFrame of water bodies (in the same CRS).
+        sindex (gpd.sindex.SpatialIndex): Spatial index built on `water_gdf`.
+
+    Returns:
+        Union[Polygon, MultiPolygon]: The input geometry with water areas removed.
+    """
+    possible_matches_index = list(sindex.intersection(geometry.bounds))
+    local_water = water_gdf.iloc[possible_matches_index]
+    water_union = local_water.unary_union
+    return geometry.difference(water_union)

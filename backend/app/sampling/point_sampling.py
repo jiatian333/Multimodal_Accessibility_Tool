@@ -8,6 +8,7 @@ This module provides tools to generate spatial sample points based on:
 
 Functions:
 ----------
+- filter_points_outside_water(...): Helper function that returns only valid points (inside polygon, outside water).
 - generate_adaptive_sample_points(...): Refines grid samples using intersections and spatial constraints.
 - sample_additional_points(...): Improves sampling coverage using isochrone and unsampled areas.
 
@@ -19,7 +20,7 @@ Returns:
 
 import numpy as np
 import geopandas as gpd
-from shapely.geometry import Point, Polygon, MultiPolygon
+from shapely.geometry import Point, Polygon
 from scipy.spatial import KDTree
 from typing import List
 from pyproj import CRS
@@ -36,10 +37,38 @@ from app.sampling.polygon_sampling import (
     extract_unsampled_area, identify_large_isochrones
 )
 
+def filter_points_outside_water(
+    points: np.ndarray,
+    polygon: Polygon,
+    water_gdf: gpd.GeoDataFrame,
+    target_crs: CRS
+) -> np.ndarray:
+    """
+    Filters out points that intersect any water geometry or lie outside a polygon.
+
+    Args:
+        points (np.ndarray): Nx2 array of point coordinates (in target_crs).
+        polygon (Polygon): Area to constrain sampling (in target_crs).
+        water_gdf (GeoDataFrame): Water polygons (in target_crs).
+        target_crs (CRS): CRS of the points and geometries.
+
+    Returns:
+        np.ndarray: 
+            - Filtered point array
+    """
+    gdf = gpd.GeoDataFrame(geometry=[Point(p) for p in points], crs=target_crs)
+
+    water_hits = gpd.sjoin(gdf, water_gdf, how="left", predicate="intersects")
+    in_water_mask = water_hits.groupby(water_hits.index).first()["index_right"].notna()
+    gdf["in_water"] = gdf.index.map(in_water_mask).fillna(False)
+
+    valid_mask = gdf.geometry.within(polygon) & ~gdf["in_water"]
+    return points[valid_mask.to_numpy()]
 
 def generate_adaptive_sample_points(
     polygon: Polygon,
-    water_combined: MultiPolygon,
+    water_gdf: gpd.GeoDataFrame,
+    water_sindex: gpd.sindex.SpatialIndex,
     target_crs: CRS,
     initial_crs: CRS, 
     mode: TransportModes
@@ -50,7 +79,8 @@ def generate_adaptive_sample_points(
 
     Args:
         polygon (Polygon): City boundary (EPSG:4326).
-        water_combined (MultiPolygon): Merged water features to exclude (EPSG:4326).
+        water_gdf (GeoDataFrame): Projected water bodies for spatial filtering (in target_crs).
+        water_sindex (gpd.sindex.SpatialIndex): Spatial index for water_gdf.
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         mode (TransportModes): Transport mode (e.g., 'walk', 'cycle', 'car_sharing').
@@ -60,13 +90,13 @@ def generate_adaptive_sample_points(
     """
     np.random.seed(SEED)
     polygon = gpd.GeoSeries(polygon, crs=initial_crs).to_crs(target_crs).iloc[0]
-    water_combined = gpd.GeoSeries(water_combined, crs=initial_crs).to_crs(target_crs).iloc[0]
     
     network_type, graph_city, _ = get_graph(mode)
 
     if EXTRA_POINTS > 0:
         intersection_dict = save_and_load_intersections(
-            network_type, target_crs, polygon, water_combined, BASE_GRID_SIZE, DENSITY, graph_city
+            network_type, target_crs, polygon, water_gdf, 
+            water_sindex, BASE_GRID_SIZE, DENSITY, graph_city
         )
         intersection_counts = np.array(intersection_dict[network_type][BASE_GRID_SIZE], dtype=float)
 
@@ -81,9 +111,7 @@ def generate_adaptive_sample_points(
     random_offsets = np.random.uniform(-BASE_GRID_SIZE / 3, BASE_GRID_SIZE / 3, points.shape)
     points += random_offsets
     
-    point_geoms = gpd.GeoSeries([Point(p) for p in points], crs=target_crs)
-    valid_mask = polygon.contains(point_geoms) & ~water_combined.intersects(point_geoms)
-    valid_points = points[valid_mask]
+    valid_points = filter_points_outside_water(points, polygon, water_gdf, target_crs)
 
     if EXTRA_POINTS > 0 and intersection_counts.sum() > 0:
         valid_indices = np.where(intersection_counts > 0)[0]
@@ -94,9 +122,7 @@ def generate_adaptive_sample_points(
         extra_offsets = np.random.uniform(-BASE_GRID_SIZE / 2, BASE_GRID_SIZE / 2, (EXTRA_POINTS, 2))
         extra_points = np.column_stack((x_vals[extra_indices], y_vals[extra_indices])) + BASE_GRID_SIZE / 2 + extra_offsets
 
-        extra_geoms = gpd.GeoSeries([Point(p) for p in extra_points], crs=target_crs)
-        valid_extra_mask = polygon.contains(extra_geoms) & ~water_combined.intersects(extra_geoms)
-        valid_extra_points = extra_points[valid_extra_mask]
+        valid_extra_points = filter_points_outside_water(extra_points, polygon, water_gdf, target_crs)
         valid_points = np.vstack((valid_points, valid_extra_points))
 
     tree = KDTree(valid_points)
@@ -121,7 +147,7 @@ def generate_adaptive_sample_points(
 def sample_additional_points(
     isochrones_gdf: gpd.GeoDataFrame,
     city_polygon: Polygon,
-    water_combined: MultiPolygon,
+    water_gdf: gpd.GeoDataFrame,
     target_crs: CRS, 
     initial_crs: CRS, 
     n_unsampled: int = 50,
@@ -133,7 +159,7 @@ def sample_additional_points(
     Args:
         isochrones_gdf (GeoDataFrame): Existing isochrones to evaluate coverage.
         city_polygon (Polygon): Area to constrain the sampling.
-        water_combined (MultiPolygon): Combined water mask to avoid invalid areas.
+        water_gdf (GeoDataFrame): Individual water features (e.g., rivers, lakes).
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         n_unsampled (int): Number of points to distribute in uncovered areas.
@@ -144,7 +170,7 @@ def sample_additional_points(
     """
     additional_points: List[Point] = []
 
-    unsampled_area = extract_unsampled_area(city_polygon, water_combined, isochrones_gdf)
+    unsampled_area = extract_unsampled_area(city_polygon, water_gdf, isochrones_gdf)
     if not unsampled_area.is_empty:
         areas_to_sample = list(unsampled_area.geoms) if unsampled_area.geom_type == 'MultiPolygon' else [unsampled_area]
         total_area = sum(area.area for area in areas_to_sample)

@@ -45,7 +45,8 @@ from app.processing.isochrones.interpolation import (
     inverse_distance_weighting, fill_gaps
 )
 from app.processing.isochrones.utils import (
-    extract_travel_times, validate_geometry, post_processing
+    extract_travel_times, validate_geometry, 
+    post_processing, fast_difference_with_water
 )
 
 logger = logging.getLogger(__name__)
@@ -56,14 +57,16 @@ def extract_contours(
     city_mask_area: Optional[MultiPolygon],
     isochrones: List[Dict[str, Union[float, Polygon, MultiPolygon]]],
     transform: Affine, 
-    performance: bool
+    performance: bool,
+    water_gdf: Optional[gpd.GeoDataFrame] = None,
+    water_sindex: Optional[gpd.sindex.SpatialIndex] = None
 ) -> List[Dict[str, Union[float, Polygon, MultiPolygon]]]:
     """
     Converts a binary mask into polygon contours, applies spatial clipping,
     and appends valid shapes to the isochrone list.
     
-    If performance mode is enabled, skips morphological filtering and uses faster clipping
-    by subtracting only the water geometry (instead of a full city polygon difference).
+    If performance mode is enabled, uses faster clipping by subtracting only 
+    the water geometry (instead of a full city polygon difference).
 
     Args:
         level (float): Travel time level associated with the mask.
@@ -72,6 +75,8 @@ def extract_contours(
         isochrones (List[Dict]): Accumulator list of extracted isochrones.
         transform (Affine): Affine transformation to map pixel to CRS coordinates.
         performance (bool): Whether to skip expensive geometry and raster operations.
+        water_gdf (GeoDataFrame, optional): Water polygons for subtraction.
+        water_sindex (gpd.sindex.SpatialIndex, optional): Spatial index for water_gdf.
 
     Returns:
         List[Dict[str, Union[float, Polygon, MultiPolygon]]]: Updated list of polygonized isochrones for the level.
@@ -88,10 +93,11 @@ def extract_contours(
 
     for poly in polygonize(lines):
         polygon_transformed = Polygon([transform * (x, y) for x, y in poly.exterior.coords])
+        geom = validate_geometry(polygon_transformed)
         if not performance:
-            clipped_poly = validate_geometry(polygon_transformed).intersection(city_mask_area)
+            clipped_poly = geom.intersection(city_mask_area)
         else:
-            clipped_poly = validate_geometry(polygon_transformed)
+            clipped_poly = fast_difference_with_water(geom, water_gdf, water_sindex)
 
         if not clipped_poly.is_empty and clipped_poly.area >= 1e-6:
             isochrones.append({"level": level, "geometry": clipped_poly})
@@ -101,11 +107,12 @@ def extract_contours(
 def generate_isochrones(
     travel_data: TravelData,
     mode: TransportModes,
-    water_combined: MultiPolygon,
     city_poly: Polygon,
     initial_crs: CRS,
     target_crs: CRS,
     transformer: Transformer,
+    water_gdf: Optional[gpd.GeoDataFrame] = None,
+    water_sindex: Optional[gpd.sindex.SpatialIndex] = None,
     smooth_sigma: float = 3,
     center: Optional[Point] = None,
     network_isochrones: bool = False,
@@ -113,20 +120,24 @@ def generate_isochrones(
     performance: bool = False
 ) -> gpd.GeoDataFrame:
     """
-    Generates spatial isochrones for a given mode using interpolation and contour extraction.
+    Generates isochrones by interpolating travel times, extracting raster contours, 
+    and converting them into spatial polygons. Supports both full-network and 
+    point-based isochrones.
     
-    This function interpolates travel times over a 2D grid, extracts time-based contours,
-    and clips them to the city boundary. In performance mode, lower resolution and fewer
-    computations are used to speed up execution with minimal accuracy loss.
+    In performance mode:
+    - Grid resolution is lower.
+    - No morphological smoothing or hole-filling.
+    - Clipping is restricted to water-body subtraction for speed.
 
     Args:
         travel_data (TravelData): Dictionary of travel time data per mode.
         mode (TransportModes): Mode of transportation (e.g., "walk", "cycle", etc.).
-        water_combined (MultiPolygon): Water geometry to exclude from city area in WGS84.
         city_poly (Polygon): Bounding city polygon in WGS84.
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         transformer (Transformer): Transforms data from initial crs to target crs.
+        water_gdf (GeoDataFrame, optional): Water features for fast clipping.
+        water_sindex (gpd.sindex.SpatialIndex, optional): Spatial index for water_gdf.
         smooth_sigma (float): Smoothing parameter for Gaussian filter.
         center (Point, optional): Origin point in WGS84 (for point isochrones).
         network_isochrones (bool): Whether this is based on network travel time.
@@ -150,12 +161,9 @@ def generate_isochrones(
     
     # --- Grid creation ---
     buffer = 1000
-    if performance:
-        resolution = 250
-        k = 8
-    else:
-        resolution = 1000 if network_isochrones else 500
-        k = 8
+    resolution = 250 if performance else (1000 if network_isochrones else 500)
+    k = 8
+    
     lon_min, lat_min = points.min(axis=0)
     lon_max, lat_max = points.max(axis=0)
 
@@ -184,9 +192,8 @@ def generate_isochrones(
     if performance:
         city_mask_area = None
     else:
-        water_projected = gpd.GeoSeries([water_combined], crs=initial_crs).to_crs(target_crs).iloc[0]
         city_projected = gpd.GeoSeries([city_poly], crs=initial_crs).to_crs(target_crs).iloc[0]
-        city_mask_area = city_projected.difference(water_projected)
+        city_mask_area = fast_difference_with_water(city_projected, water_gdf, water_sindex)
 
     xres = (lon_max + buffer - (lon_min - buffer)) / resolution
     yres = (lat_max + buffer - (lat_min - buffer)) / resolution
@@ -196,11 +203,13 @@ def generate_isochrones(
     isochrones = []
     epsilon = 0.01
     mask = grid_z <= levels[0] + epsilon
-    isochrones = extract_contours(levels[0], mask, city_mask_area, isochrones, transform, performance)
+    isochrones = extract_contours(levels[0], mask, city_mask_area, isochrones, 
+                                  transform, performance, water_gdf, water_sindex)
 
     for i in range(len(levels) - 1):
         mask = (grid_z > levels[i]) & (grid_z <= levels[i + 1] + epsilon)
-        isochrones = extract_contours(levels[i + 1], mask, city_mask_area, isochrones, transform, performance)
+        isochrones = extract_contours(levels[i + 1], mask, city_mask_area, isochrones, 
+                                      transform, performance, water_gdf, water_sindex)
 
     if not isochrones:
         logger.error("No isochrones generated. Check input travel data and interpolation.")
