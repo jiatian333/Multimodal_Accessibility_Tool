@@ -361,7 +361,6 @@
 
 
 
-
     let wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
@@ -841,7 +840,7 @@ async function updateDynamicLayersForStation(stationName) {
 
 
 */
-
+let currentBaseLayerChangeHandler = null;
 async function updateDynamicLayersForStation(stationName) {
   document.getElementById("map-loading-spinner").style.display = "block";
 
@@ -887,7 +886,7 @@ async function updateDynamicLayersForStation(stationName) {
 
   const insertLayerFromDB = (mode, label) => {
     const layer = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: `GMP_15_Min_City:geodata_${mode}`,
+      layers: `GMP_15_Min_City:${mode === 'self-drive-car' ? 'geodata_self_drive_car' : 'geodata_' + mode}`,
       format: "image/png",
       transparent: true,
       attribution: "© GeoServer",
@@ -938,30 +937,34 @@ async function updateDynamicLayersForStation(stationName) {
   };
 
   buildLayerControl();
-
-  // baselayerchange → Reaktion auf Moduswechsel
-  map.on('baselayerchange', async function (e) {
-    const modeLabel = e.name;
-    const modeKey = modeMapping[modeLabel];
-
-    // Wenn bereits geladen, abbrechen
-    if (!modeKey || loadedModes[modeLabel]) return;
-
-    document.getElementById("map-loading-spinner").style.display = "block";
-
-    const result = await runTest(stationName, modeKey);
-
-    document.getElementById("map-loading-spinner").style.display = "none";
-
-    if (!result || !result.status) return;
-
-    if (result.status === "skipped" || result.status === "success") {
-      insertLayerFromDB(modeKey, modeLabel);
-      newLayers[modeLabel].addTo(map);
-      detectLegendFromLayer(newLayers[modeLabel]);
-      buildLayerControl(); // Reihenfolge bleibt fix
+  if (currentBaseLayerChangeHandler) {
+      map.off('baselayerchange', currentBaseLayerChangeHandler);
     }
-  });
+
+currentBaseLayerChangeHandler = async function (e) {
+  const modeLabel = e.name;
+  const modeKey = modeMapping[modeLabel];
+
+  if (!modeKey || loadedModes[modeLabel]) return;
+
+  document.getElementById("map-loading-spinner").style.display = "block";
+
+  const result = await runTest(stationName, modeKey);
+
+  document.getElementById("map-loading-spinner").style.display = "none";
+
+  if (!result || !result.status) return;
+
+  if (result.status === "skipped" || result.status === "success") {
+    insertLayerFromDB(modeKey, modeLabel);
+    newLayers[modeLabel].addTo(map);
+    detectLegendFromLayer(newLayers[modeLabel]);
+    buildLayerControl();
+  }
+};
+
+// Neuen Listener aktivieren
+map.on('baselayerchange', currentBaseLayerChangeHandler);
 }
 
 
