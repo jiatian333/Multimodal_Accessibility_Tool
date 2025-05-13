@@ -25,6 +25,9 @@ e.g., using `uvicorn`:
     uvicorn app.main:app --reload
 """
 # --- Ensure environment variables are set before any dependent imports ---
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "app"))
 from app.core.env import set_environment_variables
 set_environment_variables()
 
