@@ -12,7 +12,7 @@ WORKDIR /backend/main
 COPY . ./
 
 # Install project dependencies
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Run the web service on container startup.
 CMD ["uvicorn", "--call", "backend.main:app --reload"]
