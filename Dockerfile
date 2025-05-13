@@ -15,4 +15,4 @@ COPY . ./
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Run the web service on container startup.
-CMD ["uvicorn", "backend.main:app --reload"]
+CMD ["uvicorn", "main:app --reload"]
