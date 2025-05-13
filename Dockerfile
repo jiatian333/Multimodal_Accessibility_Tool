@@ -6,7 +6,7 @@ FROM python:3
 ENV PYTHONUNBUFFERED=1
 
 # Create and change to the app directory.
-WORKDIR /backend/main
+WORKDIR /app
 
 # Copy local code to the container image.
 COPY . ./
