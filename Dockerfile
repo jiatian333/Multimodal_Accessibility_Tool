@@ -6,7 +6,7 @@ FROM python:3
 ENV PYTHONUNBUFFERED=1
 
 # Create and change to the app directory.
-WORKDIR /app
+WORKDIR /backend/main
 
 # Copy local code to the container image.
 COPY . ./
@@ -15,4 +15,4 @@ COPY . ./
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Run the web service on container startup.
-CMD ["uvicorn", "main:app --reload"]
+CMD ["uvicorn", "backend.main:app --reload"]
