@@ -239,6 +239,18 @@
   margin-bottom: 0;
 }
 
+.leaflet-success-box {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  max-width: 300px;
+}
+
+
   </style>
 </head>
 <body>
@@ -326,6 +338,8 @@
     document.getElementById("referenceBtn").addEventListener("click", function () {
       document.getElementById("referencePopup").style.display = "flex";
     });
+
+    let currentStationName = null;
   
     const wmsLayerwalk_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata_walk",
@@ -867,6 +881,7 @@ async function updateDynamicLayersForStation(stationName) {
 */
 let currentBaseLayerChangeHandler = null;
 async function updateDynamicLayersForStation(stationName) {
+  currentStationName = stationName;
   document.getElementById("map-loading-spinner").style.display = "block";
 
   const modeOrder = [
@@ -922,10 +937,16 @@ async function updateDynamicLayersForStation(stationName) {
     loadedModes[label] = true;
   };
 
-if (firstResponse.status === "skipped") {
+if (firstResponse.status === "skipped" || firstResponse.status === "success") {
   insertLayerFromDB(firstMode, firstLabel);
-} else if (firstResponse.status === "success") {
-  insertLayerFromDB(firstMode, firstLabel);
+  showMapSuccess(firstResponse.station_names, firstResponse.used_modes);
+
+  // ✅ Speichern
+  const key = `${stationName}_${firstMode}`;
+  localStorage.setItem(key, JSON.stringify({
+    station_names: firstResponse.station_names,
+    used_modes: firstResponse.used_modes
+  }));
 }
 
   // Karte aufräumen
@@ -970,11 +991,25 @@ currentBaseLayerChangeHandler = async function (e) {
   const modeLabel = e.name;
   const modeKey = modeMapping[modeLabel];
 
-  if (!modeKey || loadedModes[modeLabel]) return;
+  if (!modeKey) return;
+
+  if (loadedModes[modeLabel]) {
+    // ✅ Layer schon geladen → nur InfoBox zeigen aus localStorage
+    const cacheKey = `${currentStationName}_${modeKey}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      showMapSuccess(parsed.station_names, parsed.used_modes);
+    } else {
+      showMapSuccess(null, null);
+    }
+    return;
+  }
+
 
   document.getElementById("map-loading-spinner").style.display = "block";
 
-  const result = await runTest(stationName, modeKey);
+  const result = await runTest(currentStationName, modeKey);
 
   document.getElementById("map-loading-spinner").style.display = "none";
 
@@ -985,6 +1020,12 @@ currentBaseLayerChangeHandler = async function (e) {
     newLayers[modeLabel].addTo(map);
     detectLegendFromLayer(newLayers[modeLabel]);
     buildLayerControl();
+    showMapSuccess(result.station_names, result.used_modes);
+    const key = `${currentStationName}_${modeKey}`;
+    localStorage.setItem(key, JSON.stringify({
+      station_names: result.station_names,
+      used_modes: result.used_modes
+    }));
   } else if (result.status === "failed") {
     const errorText = result.error || "";
     const reasonText = result.reason ? ` (${result.reason})` : "";
@@ -1060,6 +1101,58 @@ function showMapError(message) {
     }
   }, 5000);
 }
+
+let successControl = null;
+
+function showMapSuccess(stations, modes) {
+  // 🔧 Robuste Formatierung
+  function formatList(value, fallbackText) {
+    if (Array.isArray(value) && value.length > 0) return value.join(', ');
+    if (typeof value === "string" && value.toLowerCase() !== "none") return value;
+    return fallbackText;
+  }
+
+  if (successControl) {
+    map.removeControl(successControl);
+    successControl = null;
+  }
+
+  successControl = L.control({ position: 'bottomleft' }); // oben rechts = sichtbar
+
+  successControl.onAdd = function () {
+    const div = L.DomUtil.create('div', 'leaflet-success-box');
+    const stationList = formatList(stations, 'No stations used');
+    const modeList = formatList(modes, 'No other modes used');
+
+    div.innerHTML = `
+      <b>Stations:</b> ${stationList}<br>
+      <b>Modes:</b> ${modeList}
+    `;
+    div.style.background = '#d4edda';
+    div.style.border = '1px solid #c3e6cb';
+    div.style.color = '#155724';
+    div.style.padding = '8px 12px';
+    div.style.borderRadius = '6px';
+    div.style.fontSize = '13px';
+    div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+    div.style.marginTop = '10px';
+    div.style.marginRight = '10px';
+    return div;
+  };
+
+  successControl.addTo(map);
+
+  // ⏳ Anzeigezeit = 10 Sekunden
+  setTimeout(() => {
+    if (successControl) {
+      map.removeControl(successControl);
+      successControl = null;
+    }
+  }, 1000); // 10.000 ms = 10s
+}
+
+
+
 
 
   </script>
