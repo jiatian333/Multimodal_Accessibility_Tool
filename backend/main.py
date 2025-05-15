@@ -22,9 +22,12 @@ Typical Use:
 This module should be specified as the app entry point when running the FastAPI server,
 e.g., using `uvicorn`:
 
-    uvicorn app.main:app --reload
+    uvicorn main:app --reload
 """
 # --- Ensure environment variables are set before any dependent imports ---
+from app.core.env import set_environment_variables
+set_environment_variables()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -67,7 +67,6 @@ templates/                    # XML templates for OJP requests
 | Geographic coverage       | Zurich city    | Canton of Zurich   | All of Switzerland                         |
 | Accuracy                  | High           | High               | Moderate (e.g., lower radius)              |
 | Speed                     | Slow           | Moderate           | ⚡ Fast (~10–25 sec)                       |
-| Water masking             | ✅            | ✅                 | ❌ Skipped for speed                       |
 | Extra metadata            | ❌            | ❌                 | ✅ Modes, stations (if non-monomodal trip) |
 | Primary use Case          | Precomputation | Precomputation     | Real-time visualization                    |
 

@@ -23,7 +23,8 @@ Main Functions:
 
 
 import logging
-from typing import Dict, List, Optional, Union
+import time
+from typing import Dict, List, Optional, Union, Tuple
 
 import cv2
 import numpy as np
@@ -39,7 +40,7 @@ from scipy.ndimage import (
 )
 from skimage import measure
 
-from app.core.config import TransportModes
+from app.core.config import WATER_DIFF_TIMEOUT, TransportModes
 from app.core.data_types import TravelData
 from app.processing.isochrones.interpolation import (
     inverse_distance_weighting, fill_gaps
@@ -55,31 +56,46 @@ def extract_contours(
     level: float,
     mask: np.ndarray,
     city_mask_area: Optional[MultiPolygon],
-    isochrones: List[Dict[str, Union[float, Polygon, MultiPolygon]]],
     transform: Affine, 
     performance: bool,
     water_gdf: Optional[gpd.GeoDataFrame] = None,
-    water_sindex: Optional[gpd.sindex.SpatialIndex] = None
-) -> List[Dict[str, Union[float, Polygon, MultiPolygon]]]:
+    water_sindex: Optional[gpd.sindex.SpatialIndex] = None,
+    start_time: Optional[float] = None,
+    max_duration: float = 5.0
+) -> Tuple[
+    List[Dict[str, Union[float, Polygon, MultiPolygon]]], 
+    List[Dict[str, Union[float, Polygon, MultiPolygon]]], 
+    bool
+]:
     """
-    Converts a binary mask into polygon contours, applies spatial clipping,
-    and appends valid shapes to the isochrone list.
-    
-    If performance mode is enabled, uses faster clipping by subtracting only 
-    the water geometry (instead of a full city polygon difference).
+    Converts a binary raster mask into polygon contours for a given travel time level.
+    Applies spatial clipping using either the full city geometry or a simplified water-based subtraction.
+
+    Behavior:
+    ---------
+    - If `performance=False`: subtract `city_mask_area` normally.
+    - If `performance=True`:
+        - Attempts fast water subtraction using `fast_difference_with_water`.
+        - If the cumulative time budget (`max_duration`) is exceeded, skips clipping.
+        - Returns both raw and clipped geometries for fallback control.
 
     Args:
         level (float): Travel time level associated with the mask.
         mask (np.ndarray): Binary mask for the current level.
         city_mask_area (MultiPolygon): Geometry used for clipping (e.g. city minus water), or None if performance mode.
-        isochrones (List[Dict]): Accumulator list of extracted isochrones.
         transform (Affine): Affine transformation to map pixel to CRS coordinates.
         performance (bool): Whether to skip expensive geometry and raster operations.
         water_gdf (GeoDataFrame, optional): Water polygons for subtraction.
         water_sindex (gpd.sindex.SpatialIndex, optional): Spatial index for water_gdf.
+        start_time (float, optional): Time reference for timeout check.
+        max_duration (float): Max total allowed time for clipping in seconds.
 
     Returns:
-        List[Dict[str, Union[float, Polygon, MultiPolygon]]]: Updated list of polygonized isochrones for the level.
+        Tuple[
+            raw_results: Unclipped geometries (used if clipping skipped),
+            water_results: Geometries clipped against water (or full city),
+            skipped: Boolean flag indicating if clipping was skipped
+        ]
     """
     mask = binary_fill_holes(mask)
     mask = binary_closing(mask, structure=np.ones((5, 5)))
@@ -90,19 +106,31 @@ def extract_contours(
         LineString([(c[1], c[0]) for c in contour])
         for contour in contours if len(contour) > 1
     ]
+    
+    raw_results = []
+    water_results = []
+    skipped = False
 
     for poly in polygonize(lines):
         polygon_transformed = Polygon([transform * (x, y) for x, y in poly.exterior.coords])
         geom = validate_geometry(polygon_transformed)
+        if geom.is_empty or geom.area < 1e-6:
+            continue
+        
         if not performance:
             clipped_poly = geom.intersection(city_mask_area)
         else:
-            clipped_poly = fast_difference_with_water(geom, water_gdf, water_sindex)
+            raw_results.append({"level": level, "geometry": geom})
+            if time.monotonic() - start_time < max_duration:
+                clipped_poly = fast_difference_with_water(geom, water_gdf, water_sindex)
+            else:
+                clipped_poly = geom
+                skipped = True
 
         if not clipped_poly.is_empty and clipped_poly.area >= 1e-6:
-            isochrones.append({"level": level, "geometry": clipped_poly})
+            water_results.append({"level": level, "geometry": clipped_poly})
 
-    return isochrones
+    return raw_results, water_results, skipped
 
 def generate_isochrones(
     travel_data: TravelData,
@@ -128,6 +156,7 @@ def generate_isochrones(
     - Grid resolution is lower.
     - No morphological smoothing or hole-filling.
     - Clipping is restricted to water-body subtraction for speed.
+    - Falls back to unclipped raw geometries if timeout exceeded in performance mode.
 
     Args:
         travel_data (TravelData): Dictionary of travel time data per mode.
@@ -200,17 +229,34 @@ def generate_isochrones(
     transform = Affine.translation(lon_min - buffer, lat_min - buffer) * Affine.scale(xres, yres)
     
     # --- Contour extraction ---
-    isochrones = []
+    raw_isochrones = []
+    water_isochrones = []
     epsilon = 0.01
+    start_time = time.monotonic()
     mask = grid_z <= levels[0] + epsilon
-    isochrones = extract_contours(levels[0], mask, city_mask_area, isochrones, 
-                                  transform, performance, water_gdf, water_sindex)
+    raw_results, water_results, skipped = extract_contours(levels[0], mask, city_mask_area,
+                                  transform, performance, water_gdf, water_sindex, 
+                                  start_time, WATER_DIFF_TIMEOUT)
+    if performance:
+        raw_isochrones.extend(raw_results)
+    water_isochrones.extend(water_results)
 
     for i in range(len(levels) - 1):
         mask = (grid_z > levels[i]) & (grid_z <= levels[i + 1] + epsilon)
-        isochrones = extract_contours(levels[i + 1], mask, city_mask_area, isochrones, 
-                                      transform, performance, water_gdf, water_sindex)
-
+        raw_results, water_results, skipped = extract_contours(levels[i + 1], mask, city_mask_area, 
+                                      transform, performance, water_gdf, water_sindex,
+                                      start_time, WATER_DIFF_TIMEOUT)
+        if performance:
+            raw_isochrones.extend(raw_results)
+        water_isochrones.extend(water_results)
+    
+    if performance and skipped:
+        logger.warning("Falling back to raw isochrones (water clipping incomplete due to timeout).")
+        isochrones = raw_isochrones
+    else:
+        isochrones = water_isochrones
+        
+    isochrones = [item for item in isochrones if item is not None]
     if not isochrones:
         logger.error("No isochrones generated. Check input travel data and interpolation.")
         raise ValueError("No isochrones generated. Check input travel data and interpolation.")

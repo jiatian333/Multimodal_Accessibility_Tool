@@ -92,6 +92,7 @@ TARGET_CRS: Final[int] = 2056 # Swiss LV95
 
 SEED: Final[int] = 82  # Random seed for reproducibility
 WALKING_SPEED: Final[float] = 4.0 * 1000 / 3600  # Walking speed in m/s
+WATER_DIFF_TIMEOUT: Final[float] = 7.0 # For performance mode, max time available for water differencing before fallback
 
 BASE_GRID_SIZE: Final[int] = 500  # Meters between sampled grid centers
 

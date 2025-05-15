@@ -13,6 +13,7 @@ Key Functions:
 --------------
 - `save_to_database(gdf: GeoDataFrame)`: Writes isochrone geometries and metadata.
 - `check_entry_exists(...)`: Returns True if a record with given type/mode/name exists.
+- `get_conn()` / `release_conn()`: Explicit connection handling for pooled reuse.
 
 Requirements:
 -------------
@@ -36,15 +37,33 @@ Logging:
 import json
 import logging
 
-import psycopg2
 from geopandas import GeoDataFrame
+from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import execute_values
 from shapely.geometry import mapping
 
 from app.core.config import DB_CREDENTIALS, TransportModes
 
 logger = logging.getLogger(__name__)
+db_pool = SimpleConnectionPool(minconn=1, maxconn=10, **DB_CREDENTIALS)
 
+def get_conn():
+    """
+    Retrieves an available database connection from the global connection pool.
+
+    Returns:
+        psycopg2.extensions.connection: A live database connection object.
+    """
+    return db_pool.getconn()
+
+def release_conn(conn):
+    """
+    Returns a database connection back to the global pool for reuse.
+
+    Args:
+        conn (psycopg2.extensions.connection): The connection object to release.
+    """
+    db_pool.putconn(conn)
 
 def save_to_database(gdf: GeoDataFrame) -> None:
     """
@@ -56,54 +75,55 @@ def save_to_database(gdf: GeoDataFrame) -> None:
     Raises:
         psycopg2.DatabaseError: If any database operation fails.
     """
-
-    with psycopg2.connect(**DB_CREDENTIALS) as conn:
+    conn = get_conn()
+    try:
         with conn.cursor() as cur:
-            try:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS geodata (
-                        id SERIAL PRIMARY KEY,
-                        level INTEGER,
-                        geometry GEOMETRY,
-                        type TEXT,
-                        mode TEXT,
-                        coords_center JSONB,
-                        name TEXT
-                    );
-                """)
-                conn.commit()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS geodata (
+                    id SERIAL PRIMARY KEY,
+                    level INTEGER,
+                    geometry GEOMETRY,
+                    type TEXT,
+                    mode TEXT,
+                    coords_center JSONB,
+                    name TEXT
+                );
+            """)
+            conn.commit()
 
-                meta_dic = gdf.attrs
-                required_keys = ["type", "mode", "center", "name"]
-                for key in required_keys:
-                    if key not in meta_dic:
-                        raise ValueError(f"Missing metadata attribute in gdf.attrs: {key}")
+            meta_dic = gdf.attrs
+            required_keys = ["type", "mode", "center", "name"]
+            for key in required_keys:
+                if key not in meta_dic:
+                    raise ValueError(f"Missing metadata attribute in gdf.attrs: {key}")
 
-                
-                geodata_values = [
-                    (
-                        int(level),
-                        json.dumps(mapping(geometry)),
-                        meta_dic["type"],
-                        meta_dic["mode"],
-                        json.dumps(meta_dic["center"]),
-                        meta_dic["name"]
-                    )
-                    for level, geometry in zip(gdf["level"], gdf["geometry"])
-                ]
+            
+            geodata_values = [
+                (
+                    int(level),
+                    json.dumps(mapping(geometry)),
+                    meta_dic["type"],
+                    meta_dic["mode"],
+                    json.dumps(meta_dic["center"]),
+                    meta_dic["name"]
+                )
+                for level, geometry in zip(gdf["level"], gdf["geometry"])
+            ]
 
-                insert_query = """
-                    INSERT INTO geodata (level, geometry, type, mode, coords_center, name)
-                    VALUES %s;
-                """
-                execute_values(cur, insert_query, geodata_values)
-                conn.commit()
+            insert_query = """
+                INSERT INTO geodata (level, geometry, type, mode, coords_center, name)
+                VALUES %s;
+            """
+            execute_values(cur, insert_query, geodata_values)
+            conn.commit()
 
-                logger.info(f"Inserted {len(geodata_values)} isochrone entries into database.")
+            logger.info(f"Inserted {len(geodata_values)} isochrone entries into database.")
 
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error while uploading isochrones to database: {e}", exc_info=True)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error while uploading isochrones to database: {e}", exc_info=True)
+    finally:
+        release_conn(conn)
                 
 def check_entry_exists(
     type_: str,
@@ -121,20 +141,22 @@ def check_entry_exists(
     Returns:
         bool: True if a matching record exists, False otherwise.
     """
+    
+    conn = get_conn()
     try:
-
-        with psycopg2.connect(**DB_CREDENTIALS) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT EXISTS (
-                        SELECT 1 FROM geodata
-                        WHERE type = %s AND mode = %s AND name = %s
-                    );
-                """, (type_, mode, name))
-                exists = cur.fetchone()[0]
-                logger.info(f"Checked DB for ({type_}, {mode}, {name}) → Exists: {exists}")
-                return exists
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM geodata
+                    WHERE type = %s AND mode = %s AND name = %s
+                );
+            """, (type_, mode, name))
+            exists = cur.fetchone()[0]
+            logger.info(f"Checked DB for ({type_}, {mode}, {name}) → Exists: {exists}")
+            return exists
 
     except Exception as e:
         logger.error(f"Error while checking for existing geodata entry: {e}", exc_info=True)
         return False
+    finally:
+        release_conn(conn)
