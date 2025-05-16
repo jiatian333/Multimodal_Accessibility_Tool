@@ -220,6 +220,7 @@ async def send_request(xml_request: str, endpoint: str) -> Tuple[str, int]:
             'Content-Type': 'application/xml; charset=utf-8'
         }
         response = requests.post(endpoint, data=xml_request.encode('utf-8'), headers=headers)
+        response.encoding = 'utf-8'
         return response.text, response.status_code
     
     await enforce_rate_limit()
