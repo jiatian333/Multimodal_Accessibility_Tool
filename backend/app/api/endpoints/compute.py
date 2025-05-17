@@ -157,6 +157,10 @@ class ComputeResponse(BaseModel):
     runtime: Optional[float] = None
     used_modes: Optional[List[str]] = None
     station_names: Optional[List[str]] = None
+    
+@router.get("/health/")
+def health_check():
+    return {"status": "ok"}
 
 @router.post("/", response_model=ComputeResponse)
 async def compute_isochrones(
