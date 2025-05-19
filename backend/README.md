@@ -76,7 +76,7 @@ templates/                    # XML templates for OJP requests
 
 ### 🔄 Compute Isochrones
 
-**Endpoint**: `POST /api/compute`
+**Endpoint**: `POST /app/compute`
 
 **Example Payload:**
 
@@ -101,7 +101,7 @@ templates/                    # XML templates for OJP requests
   "mode": "bicycle_rental",
   "reason": null,
   "error": null,
-  "runtime": 0.32, // in minutes
+  "runtime": 0.32,
   "used_modes": ["cycle", "bus", "walk"],
   "station_names": ["Zürich, Rudolf-Brun-Brücke"]
 }
