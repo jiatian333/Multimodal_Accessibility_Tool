@@ -177,7 +177,6 @@ class StationaryData:
                 combined = pickle.load(f)
                 self.water_gdf = gpd.GeoDataFrame(geometry=combined, crs=self.source_crs).to_crs(self.target_crs)
                 self.water_sindex = self.water_gdf.sindex
-                logger.info("Loaded water features from cache.")
             return
         
         try:

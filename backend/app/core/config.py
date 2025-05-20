@@ -59,7 +59,8 @@ DB_CREDENTIALS: Final[Dict[str, str]] = {
 }
 
 ENDPOINT: Final[str] = "https://api.opentransportdata.swiss/ojp2020" # OJP API endpoint
-API_PREFIX: Final[str] = "/app/compute"
+ROOT_PATH: Final[str] = "/app"
+API_PREFIX: Final[str] = "/compute"
 FRONTEND: Final[str] = "http://127.0.0.1:5500" # Location of the frontend
 
 # === Algorithm Behavior Flags ===

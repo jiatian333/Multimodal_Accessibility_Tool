@@ -32,14 +32,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.compute import router as compute_router
-from app.core.config import API_PREFIX, FRONTEND
+from app.core.config import API_PREFIX, FRONTEND, ROOT_PATH
 from app.core.logger import setup_logging
 from app.lifecycle.startup import bind_startup_event
 from app.lifecycle.shutdown import bind_shutdown_event
 
 setup_logging()
 
-app = FastAPI()
+app = FastAPI(root_path=ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,

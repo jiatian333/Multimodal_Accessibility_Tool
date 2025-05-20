@@ -159,8 +159,8 @@ class ComputeResponse(BaseModel):
     station_names: Optional[List[str]] = None
     
 @router.get("/health/")
-def health_check():
-    return {"status": "ok"}
+def health_check(request: Request):
+    return {"status": "ok", "root_path": request.scope.get("root_path")}
 
 @router.post("/", response_model=ComputeResponse)
 async def compute_isochrones(
