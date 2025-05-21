@@ -11,6 +11,7 @@ Key Responsibilities:
 - Instantiates the FastAPI app and registers API routes.
 - Configures CORS middleware to allow browser-based cross-origin requests
   from the designated frontend application.
+- Normalizes incoming HTTP request paths.
 
 Application Lifecycle:
 -----------------------
@@ -29,45 +30,18 @@ from app.core.env import set_environment_variables
 set_environment_variables()
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.compute import router as compute_router
-from app.core.config import API_PREFIX, FRONTEND, ROOT_PATH
+from app.core.config import API_PREFIX, ROOT_PATH
 from app.core.logger import setup_logging
+from app.core.middleware import register_middleware
 from app.lifecycle.startup import bind_startup_event
 from app.lifecycle.shutdown import bind_shutdown_event
 
 setup_logging()
 
 app = FastAPI(root_path=ROOT_PATH)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[FRONTEND],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-import logging
-logger = logging.getLogger(__name__)
-
-class NormalizePathMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        scope = request.scope
-        path = scope["path"]
-        logger.info(f"Request path: {path}")
-        normalized_path = path.replace("//", "/")
-        if normalized_path != path:
-            scope["path"] = normalized_path
-        response = await call_next(Request(scope, receive=request.receive))
-        return response
-
-app.add_middleware(NormalizePathMiddleware)
-
+register_middleware(app)
 app.include_router(compute_router, prefix=API_PREFIX, tags=["isochrones"])
 
 bind_startup_event(app)
