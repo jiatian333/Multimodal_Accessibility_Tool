@@ -48,6 +48,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class NormalizePathMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        scope = request.scope
+        path = scope["path"]
+        print(path)
+        normalized_path = path.replace("//", "/")
+        if normalized_path != path:
+            scope["path"] = normalized_path
+        response = await call_next(Request(scope, receive=request.receive))
+        return response
+
+app.add_middleware(NormalizePathMiddleware)
+
 app.include_router(compute_router, prefix=API_PREFIX, tags=["isochrones"])
 
 bind_startup_event(app)
