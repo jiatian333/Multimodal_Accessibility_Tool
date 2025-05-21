@@ -52,12 +52,14 @@ app.add_middleware(
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+import logging
+logger = logging.getLogger(__name__)
 
 class NormalizePathMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         scope = request.scope
         path = scope["path"]
-        print(path)
+        logger.info(f"Request path: {path}")
         normalized_path = path.replace("//", "/")
         if normalized_path != path:
             scope["path"] = normalized_path
