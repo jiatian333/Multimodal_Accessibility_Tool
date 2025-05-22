@@ -1023,7 +1023,9 @@ currentBaseLayerChangeHandler = async function (e) {
   if (!modeKey) return;
 
   if (loadedModes[modeLabel]) {
-    // ✅ Layer schon geladen → nur InfoBox zeigen aus localStorage
+    // 🧹 Fehlerfeld bereinigen, da gecachter Erfolg angezeigt wird
+    clearMapMessages();
+
     const cacheKey = `${currentStationName}_${modeKey}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
@@ -1066,10 +1068,9 @@ map.on('baselayerchange', currentBaseLayerChangeHandler);
 }
 
 
-
 async function runTest(stationName, mode) {
   try {
-    const response = await fetch('http://127.0.0.1:8000/app/compute/', {
+    const response = await fetch('http://geoflaskprd.ethz.ch/app/compute/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1097,6 +1098,34 @@ async function runTest(stationName, mode) {
   }
 }
 
+/*async function runTest(stationName, mode) {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/app/compute/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: mode,
+        network_isochrones: false,
+        input_station: stationName,
+        performance: true,
+        force_update: false
+      })
+    });
+
+    const data = await response.json();
+    console.log("✅ API Response:");
+    console.dir(data);
+    window.apiResponse = data;
+    console.log(apiResponse.status);  
+    console.log(apiResponse.type);   
+    console.log(apiResponse.mode);   
+    console.log(apiResponse.runtime);
+    return data;  // ✅ DAS HAT GEFÄHLT
+  } catch (error) {
+    console.error("❌ Request failed:", error);
+  }
+}
+*/
 
 
 function showMapError(message) {
