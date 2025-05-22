@@ -461,6 +461,8 @@
     const allStationNames = [];
     let trainLoaded = false;
     let lastHighlightedMarker = null;
+    let successControl = null;
+    let errorControl = null;
   
     function enableSearchIfReady() {
       if (trainLoaded) {
@@ -706,6 +708,7 @@
 
     let currentBaseLayerChangeHandler = null;
     function toggleMode(mode) {
+      clearMapMessages();
       currentMode = mode;
         if (currentBaseLayerChangeHandler) {
           map.off('baselayerchange', currentBaseLayerChangeHandler);
@@ -750,6 +753,7 @@
         wmsLayerwalk_static.addTo(map); // Startlayer
         detectLegendFromLayer(wmsLayerwalk_static);
         cartoLayer.addTo(map);
+        map.setView([47.3769, 8.5417], 12);
 
       } else {
         document.getElementById("legendContainer").innerHTML = "";
@@ -1065,7 +1069,7 @@ map.on('baselayerchange', currentBaseLayerChangeHandler);
 
 async function runTest(stationName, mode) {
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/compute/', {
+    const response = await fetch('http://127.0.0.1:8000/app/compute/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1093,7 +1097,7 @@ async function runTest(stationName, mode) {
   }
 }
 
-let errorControl = null;
+
 
 function showMapError(message) {
   if (errorControl) {
@@ -1118,7 +1122,7 @@ function showMapError(message) {
   errorControl.addTo(map);
 }
 
-let successControl = null;
+
 
 function showMapSuccess(stations, modes) {
   // 🔧 Robuste Formatierung
@@ -1160,7 +1164,16 @@ function showMapSuccess(stations, modes) {
 }
 
 
-
+function clearMapMessages() {
+  if (successControl) {
+    map.removeControl(successControl);
+    successControl = null;
+  }
+  if (errorControl) {
+    map.removeControl(errorControl);
+    errorControl = null;
+  }
+}
 
 
   </script>
