@@ -90,7 +90,6 @@ def generate_adaptive_sample_points(
     """
     np.random.seed(SEED)
     polygon = gpd.GeoSeries(polygon, crs=initial_crs).to_crs(target_crs).iloc[0]
-    
     network_type, graph_city, _ = get_graph(mode)
 
     if EXTRA_POINTS > 0:
@@ -101,26 +100,38 @@ def generate_adaptive_sample_points(
         intersection_counts = np.array(intersection_dict[network_type][BASE_GRID_SIZE], dtype=float)
 
     minx, miny, maxx, maxy = polygon.bounds
-    x_vals, y_vals = np.meshgrid(
-        np.linspace(minx, maxx, int(np.ceil((maxx - minx) / BASE_GRID_SIZE))),
-        np.linspace(miny, maxy, int(np.ceil((maxy - miny) / BASE_GRID_SIZE)))
-    )
-    x_vals, y_vals = x_vals.flatten(), y_vals.flatten()
-    points = np.column_stack((x_vals, y_vals)) + BASE_GRID_SIZE / 2
+    x_vals = np.linspace(minx, maxx, int(np.ceil((maxx - minx) / BASE_GRID_SIZE)))
+    y_vals = np.linspace(miny, maxy, int(np.ceil((maxy - miny) / BASE_GRID_SIZE)))
 
-    random_offsets = np.random.uniform(-BASE_GRID_SIZE / 3, BASE_GRID_SIZE / 3, points.shape)
-    points += random_offsets
-    
-    valid_points = filter_points_outside_water(points, polygon, water_gdf, target_crs)
+    grid_centroids = []
+    for x in x_vals:
+        for y in y_vals:
+            cell = Polygon([
+                (x, y),
+                (x + BASE_GRID_SIZE, y),
+                (x + BASE_GRID_SIZE, y + BASE_GRID_SIZE),
+                (x, y + BASE_GRID_SIZE)
+            ])
+            if polygon.intersects(cell):
+                cx = x + BASE_GRID_SIZE / 2
+                cy = y + BASE_GRID_SIZE / 2
+                grid_centroids.append((cx, cy))
+
+    grid_centroids = np.array(grid_centroids)
+    assert len(grid_centroids) == len(intersection_counts), "Mismatch between grid and intersection counts"
+
+    jitter = np.random.uniform(-BASE_GRID_SIZE / 3, BASE_GRID_SIZE / 3, grid_centroids.shape)
+    grid_points = grid_centroids + jitter
+    valid_points = filter_points_outside_water(grid_points, polygon, water_gdf, target_crs)
 
     if EXTRA_POINTS > 0 and intersection_counts.sum() > 0:
-        valid_indices = np.where(intersection_counts > 0)[0]
-        valid_weights = np.log(intersection_counts[valid_indices])
-        valid_weights /= valid_weights.sum()
+        valid_indices = np.where(intersection_counts > max(intersection_counts)/4)[0]
+        weights = np.log(intersection_counts[valid_indices] + 1)
+        weights /= weights.sum()
 
-        extra_indices = np.random.choice(valid_indices, EXTRA_POINTS, p=valid_weights)
-        extra_offsets = np.random.uniform(-BASE_GRID_SIZE / 2, BASE_GRID_SIZE / 2, (EXTRA_POINTS, 2))
-        extra_points = np.column_stack((x_vals[extra_indices], y_vals[extra_indices])) + BASE_GRID_SIZE / 2 + extra_offsets
+        chosen = np.random.choice(valid_indices, EXTRA_POINTS, p=weights)
+        extra_jitter = np.random.uniform(-BASE_GRID_SIZE / 2, BASE_GRID_SIZE / 2, (EXTRA_POINTS, 2))
+        extra_points = grid_centroids[chosen] + extra_jitter
 
         valid_extra_points = filter_points_outside_water(extra_points, polygon, water_gdf, target_crs)
         valid_points = np.vstack((valid_points, valid_extra_points))
@@ -170,8 +181,8 @@ def sample_additional_points(
     """
     additional_points: List[Point] = []
 
-    unsampled_area = extract_unsampled_area(city_polygon, water_gdf, isochrones_gdf)
-    if not unsampled_area.is_empty:
+    unsampled_area = extract_unsampled_area(city_polygon, water_gdf, isochrones_gdf, initial_crs)
+    if not gpd.GeoSeries([unsampled_area], crs=initial_crs).to_crs(target_crs).area.iloc[0] < 100:
         areas_to_sample = list(unsampled_area.geoms) if unsampled_area.geom_type == 'MultiPolygon' else [unsampled_area]
         total_area = sum(area.area for area in areas_to_sample)
         for area in areas_to_sample:

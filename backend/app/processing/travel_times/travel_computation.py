@@ -262,10 +262,10 @@ async def network_travel_times_async(
 
     results = await run_in_batches(
         tasks,
-        batch_size=20,
+        batch_size=10,
         desc="Computing network travel times",
         abort_condition=lambda r: isinstance(r, str) and "error: 429" in r,
-        timeout_per_task=900
+        timeout_per_task=600
     )
 
     for code in results:

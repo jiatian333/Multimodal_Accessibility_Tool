@@ -27,7 +27,8 @@ from pyproj import CRS
 def extract_unsampled_area(
     area_polygon: Polygon,
     water_gdf: gpd.GeoDataFrame,
-    isochrones_gdf: gpd.GeoDataFrame
+    isochrones_gdf: gpd.GeoDataFrame, 
+    source_crs: CRS
 ) -> MultiPolygon:
     """
     Identifies areas in the polygon that remain unsampled by subtracting isochrone and water coverage.
@@ -36,12 +37,13 @@ def extract_unsampled_area(
         area_polygon (Polygon): Full area boundary.
         water_gdf (GeoDataFrame): Individual water features (e.g., rivers, lakes).
         isochrones_gdf (GeoDataFrame): Existing isochrone coverage.
+        source_crs (CRS): The source crs (EPSG 4326).
 
     Returns:
         MultiPolygon: Uncovered land area that could benefit from additional sampling.
     """
     union_iso = isochrones_gdf.geometry.union_all()
-    union_water = water_gdf.union_all()
+    union_water = water_gdf.to_crs(source_crs).union_all()
     uncovered_area = area_polygon.difference(unary_union([union_water, union_iso]))
     return uncovered_area
 

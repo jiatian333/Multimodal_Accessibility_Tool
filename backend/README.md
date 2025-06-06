@@ -24,6 +24,18 @@
 
 ---
 
+---
+
+## 🌐 Public Deployment
+
+The backend is publicly deployed and available for use at:
+
+🔗 **[https://geoflaskprd.ethz.ch/app/compute/](https://geoflaskprd.ethz.ch/app/compute/)**
+
+POST requests can be sent directly to this endpoint to compute isochrones. See the [API Usage](#-api-usage) section for payload details and response formats.
+
+---
+
 ## 📁 Project Structure
 
 ```

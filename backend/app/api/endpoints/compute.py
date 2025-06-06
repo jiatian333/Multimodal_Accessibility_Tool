@@ -101,8 +101,8 @@ class ComputeRequest(BaseModel):
         network_isochrones (bool): Whether to compute full-network isochrones.
         input_station (Optional[str]): Origin station for point-based isochrones.
         performance (bool): Enable faster computation (less precise). Only for point isochrones.
-        arrival_time (Optional[str]): Desired arrival time (ISO format).
-        timestamp (Optional[str]): Timestamp of the request (ISO format).
+        arrival_time (Optional[str]): Desired arrival time (ISO 8601 format).
+        timestamp (Optional[str]): Timestamp of the request (ISO 8601 format).
         force_update (Optional[bool]): If True, forces update of parking and shared mobility data.
     """
     
@@ -157,10 +157,6 @@ class ComputeResponse(BaseModel):
     runtime: Optional[float] = None
     used_modes: Optional[List[str]] = None
     station_names: Optional[List[str]] = None
-    
-@router.get("/health/")
-def health_check(request: Request):
-    return {"status": "ok", "root_path": request.scope.get("root_path")}
 
 @router.post("/", response_model=ComputeResponse)
 async def compute_isochrones(

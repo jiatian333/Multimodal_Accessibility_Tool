@@ -67,9 +67,9 @@ FRONTEND: Final[str] = "https://n.ethz.ch" # Location of the frontend
 
 IMPROVE_ISOCHRONES: Final[bool] = True  # Resample in problematic or large uniform regions
 USE_MODE_WEIGHTING: Final[bool] = True  # Weight stations by number of modes (account for station importance)
-USE_RTREE_SEARCH: Final[bool] = True # Use R-tree index before falling back to API
+USE_RTREE_SEARCH: Final[bool] = True # Use R-tree index before falling back to OJP
 ONLY_OJP: Final[bool] = True # Whether to only rely on OJP for point isochrones if performance mode is activated (significant speed increase)
-WALKING_NETWORK: Final[bool] = True     # Use local walking network instead of API
+WALKING_NETWORK: Final[bool] = True     # Use local walking network instead of OJP
 
 # Maximum number of destination candidates evaluated per origin point, restricted by `MAX_DESTINATIONS` if walking requirements fulfilled. 
 NUM_RESULTS_DESTINATIONS: Final[int] = 30 # Increase if often no valid station found for network isochrones.
@@ -93,7 +93,7 @@ TARGET_CRS: Final[int] = 2056 # Swiss LV95
 
 SEED: Final[int] = 82  # Random seed for reproducibility
 WALKING_SPEED: Final[float] = 4.0 * 1000 / 3600  # Walking speed in m/s
-WATER_DIFF_TIMEOUT: Final[float] = 5.0 # For performance mode, max time available for water differencing before fallback
+WATER_DIFF_TIMEOUT: Final[float] = 5.0 # For performance mode, max time available (in seconds) for water differencing before fallback
 
 BASE_GRID_SIZE: Final[int] = 500  # Meters between sampled grid centers
 
