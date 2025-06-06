@@ -260,7 +260,7 @@ async def compute_network_isochrones(
         return ComputeResponse(
             status="failed", 
             error="Rate limit exceeded while computing network isochrones.",
-            runtime=round((time.time() - start) / 60, 2)
+            runtime=(time.time() - start) / 60
         )
 
     isochrones = generate_isochrones(
@@ -302,14 +302,14 @@ async def compute_network_isochrones(
             reason="Rate limit exceeded during isochrone improvement.",
             type="network",
             mode=req.mode,
-            runtime=round((time.time() - start) / 60, 2)
+            runtime=(time.time() - start) / 60
         )
     
     return ComputeResponse(
         status="success", 
         type="network", 
         mode=req.mode, 
-        runtime=round((time.time() - start) / 60, 2)
+        runtime=(time.time() - start) / 60
     )
 
 
@@ -360,7 +360,7 @@ async def compute_point_isochrones(
         return ComputeResponse(
             status="failed", 
             error="Rate limit exceeded while computing point isochrones.", 
-            runtime=round((time.time() - start) / 60, 2),
+            runtime=(time.time() - start) / 60,
             station=req.input_station, 
             mode=req.mode
         )
@@ -371,7 +371,7 @@ async def compute_point_isochrones(
             status="failed", 
             error="Point isochrone computation failed.", 
             reason=f"Not enough valid responses from the OJP API (no trips found).",
-            runtime=round((time.time() - start) / 60, 2),
+            runtime=(time.time() - start) / 60,
             station=req.input_station, 
             mode=req.mode
         )
@@ -394,5 +394,5 @@ async def compute_point_isochrones(
         mode=req.mode, 
         used_modes=modes,
         station_names=stations,
-        runtime=round((time.time() - start) / 60, 2)
+        runtime=(time.time() - start) / 60
     )
