@@ -7,7 +7,6 @@
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
-  <script src="https://d3js.org/d3.v4.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -46,19 +45,19 @@
       border: 1px solid #ccc;
     }
 
-.sidebar button {
-  background-color: #707070;
-  color: white;
-  border: 1px solid #ced4da;
-  cursor: pointer;
-  margin-bottom: 20px;
-}
+    .sidebar button {
+      background-color: #707070;
+      color: white;
+      border: 1px solid #ced4da;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
 
 
-.sidebar button:hover {
-  background-color: #707070;     /* mittelgrau beim Hover */
-  color: white;
-}
+    .sidebar button:hover {
+      background-color: #707070; 
+      color: white;
+    }
 
     .description {
       font-size: 0.95rem;
@@ -100,156 +99,143 @@
     .popup-content button:hover {
       background-color: #0056b3;
     }
-
-    .isochrone-legend {
+    
+    
+    .pfeil {
       position: absolute;
-      bottom: 55px;
-      left: 5px;
-      background: white;
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.3);
-      font-size: 14px;
-      line-height: 1.5;
+      bottom: 30px;
+      right: 10px;
+      width: 50px;
+      height: auto;
       z-index: 1000;
       pointer-events: none;
     }
 
-    .isochrone-legend-item {
-      display: flex;
-      align-items: center;
-      margin-bottom: 5px;
+
+    .dropdown-block {
+      border: 1px solid #ccc;
+      padding: 8px 10px; 
+      border-radius: 8px;
+      background-color: #f8f9fa;
+      margin-top: 15px;
     }
 
-    .isochrone-legend-color {
-      width: 15px;
-      height: 15px;
-      border-radius: 3px;
-      margin-right: 8px;
+    .dropdown-block label {
+      font-weight: bold;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .dropdown-block select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
     }
     
-    .pfeil {
-    position: absolute;
-    bottom: 30px;
-    right: 10px;
-    width: 50px;
-    height: auto;
-    z-index: 1000;
-    pointer-events: none;
-  }
-  .info-button-container {
-  display: flex;
-  justify-content: flex-end;
-  margin: 5px 20px 5px 0;
-}
 
-  .info-button {
-    font-size: 10px;
-    padding: 3px 3px;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-    cursor: pointer;
-  }
-  .info-button:hover {
-    background-color: #f0f0f0;
-  }
+    #map-loading-spinner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: 2000;
+      transform: translate(-50%, -50%);
+      display: none;
+    }
 
-  .dropdown-block {
-    border: 1px solid #ccc;
-    padding: 8px 10px; 
-    border-radius: 8px;
-    background-color: #f8f9fa; /* leichtes Grau */
-    margin-top: 15px;
-  }
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #007bff;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
 
-  .dropdown-block label {
-    font-weight: bold;
-    font-size: 0.8rem;
-    margin-bottom: 8px;
-    display: block;
-  }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
 
-  .dropdown-block select {
-    width: 100%;
-    padding: 8px;
-    margin-top: 5px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-  }
+    .sidebar h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 18px;
+      font-weight: bold;
+    }
 
-  .reference-button-fixed {
-    position: absolute;
-    top: 50px;
-    left: 30px;
-    font-size: 10px;
-    padding: 4px 8px;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-    cursor: pointer;
-    z-index: 1100; /* über allem sichtbar */
-  }
+    #stationInputBlock h3 {
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
 
-  .reference-button-fixed:hover {
-    background-color: #f0f0f0;
-  }
-  #map-loading-spinner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 2000;
-  transform: translate(-50%, -50%);
-  display: none;
-}
+    #stationInput::placeholder {
+      font-size: 14px;
+    }
 
-.spinner {
-  border: 8px solid #f3f3f3;
-  border-top: 8px solid #007bff;
-  border-radius: 50%;
-  width: 60px;
-  height: 60px;
-  animation: spin 1s linear infinite;
-}
+    #showIsochroneBtn {
+      margin-bottom: 0;
+    }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+    .leaflet-success-box {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      max-width: 300px;
+    }
 
-.sidebar h3 {
-  margin-top: 0;
-  margin-bottom: 10px;
-  font-size: 18px;
-  font-weight: bold;
-}
+    @media (max-width: 768px) {
 
-#stationInputBlock h3 {
-  font-size: 13px;
-  margin-bottom: 8px;
-}
+      .sidebar {
+        height: auto !important;
+      }
 
-#stationInput::placeholder {
-  font-size: 14px; /* oder z. B. 12px */
-}
+      #map {
+        height: 500px !important;
+      }
+    }
 
-#showIsochroneBtn {
-  margin-bottom: 0;
-}
+    .info-button-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 20px 10px 20px;
+    }
 
-.leaflet-success-box {
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  color: #155724;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  max-width: 300px;
-}
+    .info-button {
+      font-size: 10px;
+      padding: 4px 6px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
 
+    .info-button:hover {
+      background-color: #f0f0f0;
+    }
+
+    @media (min-width: 768px) {
+      .row {
+        height: calc(100vh - 140px);
+      }
+
+      .sidebar {
+        height: 100%;
+        overflow-y: auto;
+      }
+
+      #map {
+        height: 100% !important;
+      }
+    }
 
   </style>
 </head>
@@ -259,32 +245,31 @@
     <div class="popup-content">
       <h2>Welcome to 15-min city</h2>
       <p>
-        This web application aims to visualize the accessibility from various locations to public transport stations. The initial page displays network isochrones of 6 different transportation modes, illustrating travel times from different locations in the city of Zurich to their nearest public transport station. If you wish to view point isochrones for a specific train station, please switch to dynamic page and enter a train station name OR just click on the station.
+        This web application visualizes accessibility to public transport stations. The landing page displays network isochrones for six transport modes, showing travel times within Zurich to the nearest station. To view point-based isochrones from a specific train station—available for locations beyond Zurich—switch to the dynamic page and either click on a station or enter its name.
       </p>
       <button onclick="closePopup()">Got it!</button>
     </div>
   </div>
 
-  <h1>Last-Mile Connectivity Analysis of Zurich</h1>
-  <button id="referenceBtn" class="reference-button-fixed">Project Info</button>
+  <h1>Multimodal Accessibility Tool for First- and Last-Mile Connectivity</h1>
   <div class="info-button-container">
-    <button id="infoBtn" class="info-button">What are the modes?</button>
+    <button id="referenceBtn" class="info-button">Project Info</button>
+    <button id="infoBtn" class="info-button">What modes are available?</button>
   </div>
   <div class="container-fluid">
     <div class="row">
       <div class="col-md-2 sidebar">
         <div class="description">
-          <h3>Isochrones Mode</h3>
+          <h3>Isochrones Type</h3>
           <div id="staticText">
             <p>
-              Network Isochrones as shown here on the map are generated by randomely selected numbers of points over the city of Zurich and their connectivity to public transport stations. The brighter the color, the less accessible is the location. The network isochrones map helps city planners to identify the needs for more accessibility. 
+              Network Isochrones show monomodal travel times from random points across Zurich to the best public transport station, considering POIs, proximity, and station relevance. The brighter the color, the less accessible is the location. These precomputed results assist in planning and can be paired with demographic data. 
             </p>
           </div>
           <div id="dynamicText" style="display: none;">
             <p>
-            While the standard mode is used for stations within Zurich, the performance mode – more sufficient but less accurate – is applied for stations outside of Zurich. Click on a station or type in a station name to view. 
+              Point isochrones show accessibility from a fixed location. For stations in Zurich, high-accuracy monomodal isochrones are precomputed. For other stations across Switzerland, multimodal isochrones can be computed in under 30 seconds. Click a station or enter its name to view.
             </p>
-
           </div>
         </div>
 
@@ -321,12 +306,14 @@
     const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap contributors © CARTO'
     }).addTo(map);
-          //Point Isochrones display accessibility from a train station outwards. 
     const referencePopupHTML = `
       <div id="referencePopup" class="popup-overlay" style="display: none;">
         <div class="popup-content">
           <h3>References</h3>
-          <p><span>Title:</span> Semester Project FS25 – Designing a Multimodal Accessibility Tool for Last-Mile Connectivity in 15-Minute Cities</p>
+          <p>
+            Semester Project FS25 at ETH Zürich<br>
+            Multimodal Accessibility Tool for First- and Last-Mile Connectivity
+          </p>
           <p><span>Authors:</span> Nick Teutschmann, Jiaan Tian</p>
           <p><span>Contact:</span> nteutschm@student.ethz.ch, jiatian@student.ethz.ch</p>
           <button onclick="document.getElementById('referencePopup').style.display='none'">Close</button>
@@ -339,9 +326,34 @@
       document.getElementById("referencePopup").style.display = "flex";
     });
 
+    
+    const modeInfoHTML = `
+      <div id="modeInfoOverlay" class="popup-overlay" style="display: none;">
+        <div class="popup-content">
+          <h3>Transport Mode Info</h3>
+          <ul style="text-align: left; padding-left: 1rem;">
+            <li><strong>Walk:</strong> Moving on foot.</li>
+            <li><strong>Cycle:</strong> Riding your own bike.</li>
+            <li><strong>Cycle Rental:</strong> Picking up a shared bike from a rental station.</li>
+            <li><strong>E-Scooter Rental:</strong> Using a rented electric scooter.</li>
+            <li><strong>Car Sharing:</strong> Renting a shared car from a designated station.</li>
+            <li><strong>Car:</strong> Driving your own car.</li>
+            
+          </ul>
+          <button onclick="document.getElementById('modeInfoOverlay').style.display='none'">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modeInfoHTML);
+    document.getElementById("infoBtn").addEventListener("click", function () {
+      document.getElementById("modeInfoOverlay").style.display = "flex";
+    });
+
+
     let currentStationName = null;
-    let currentMode = "static";
+    let currentMode = "static"; 
   
+    // Get network isochrone layers of all 6 modes for static mode.
     const wmsLayerwalk_static = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
@@ -394,10 +406,8 @@
       CQL_FILTER: "mode='self-drive-car' AND type='network'",
       opacity: 0.7
     });
-   
 
-
-
+    // Definining 6 initial isochrone layers of the different modes for the point isochrones.
     let wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
@@ -451,10 +461,8 @@
       CQL_FILTER: "mode='cycle' AND type='point' AND name='Stettbach'",
       opacity: 0.7
     });
-  
 
   
-    // GeoServer WFS train_stations (aktiv)
     const trainLayerGroup = L.layerGroup().addTo(map);
     const stationLookup = {};
     const visibleStationMarkers = {};
@@ -463,7 +471,10 @@
     let lastHighlightedMarker = null;
     let successControl = null;
     let errorControl = null;
+
   
+    // The enableSearchIfReady function activates station search and highlights selected station on the map. 
+    // If in dynamic mode then also activate point isochrone for this station. 
     function enableSearchIfReady() {
       if (trainLoaded) {
         document.getElementById("showIsochroneBtn").addEventListener("click", function () {
@@ -501,11 +512,13 @@
         });
       }
     }
-  
-    // ✅ GeoServer WFS-Request für train_stations
+
+
+    // Get the in database stored train stations and show it on the map. 
     fetch("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=GMP_15_Min_City:train_stations&outputFormat=application/json")
       .then(res => res.json())
       .then(data => {
+      // A user-visible layer for train station markers.
         const visibleLayer = L.geoJSON(data, {
           pointToLayer: function (feature, latlng) {
             const marker = L.circleMarker(latlng, {
@@ -517,11 +530,9 @@
               weight: 1
             });
 
-            // Speichere Originalwerte zur späteren Wiederherstellung
             marker.options.originalColor = '#000000';
             marker.options.originalRadius = 2;
 
-            // Speichere Marker unter seinem Namen (in Kleinbuchstaben)
             const name = feature.properties.name;
             if (name) {
               visibleStationMarkers[name.toLowerCase()] = marker;
@@ -531,13 +542,12 @@
             return marker;
           }
         });
-
-        // Unsichtbarer Layer für Interaktion
+        // A hidden layer with an enlarged interaction area to simplify hover and click on station markers.
         const invisibleLayer = L.geoJSON(data, {
           pointToLayer: function (feature, latlng) {
             return L.circleMarker(latlng, {
-              radius: 10, // größerer Interaktionsbereich
-              color: '#00000000', // vollständig transparent
+              radius: 10, 
+              color: '#00000000',
               fillColor: '#00000000',
               fillOpacity: 0.0,
               opacity: 0.0,
@@ -568,10 +578,11 @@
         invisibleLayer.addTo(trainLayerGroup);
         trainLoaded = true;
         enableSearchIfReady();
+
+        // Enables autocomplete for the station input field.
         document.getElementById("stationInput").addEventListener("input", function () {
           const input = this.value.toLowerCase();
 
-          // Wenn exakt ein Eintrag gewählt wurde → keine Vorschläge mehr anzeigen
           if (allStationNames.some(name => name.toLowerCase() === input)) {
             document.getElementById("stationSuggestions").innerHTML = "";
             return;
@@ -592,93 +603,26 @@
         });
       });
   
-    // 🟨 Alte CSV-Daten für Train + Bus (auskommentiert)
-  /*
-    const busLayerGroup = L.layerGroup().addTo(map);
-    const trainLayerGroup = L.layerGroup().addTo(map);
-    let markers = [];
-    const stationLookup = {};
-    let busLoaded = false;
-    let trainLoaded = false;
-  
-    d3.csv("./data/bus_stations.csv", function (error, data) {
-      if (error) throw error;
-      data.forEach(function (d) {
-        let lat = parseFloat(d.latitude);
-        let lon = parseFloat(d.longitude);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          let marker = L.circleMarker([lat, lon], {
-            radius: 2,
-            color: '#000000',
-            fillColor: '#000000',
-            opacity: 0.6,  
-            fillOpacity: 0.6,
-            weight: 1
-          }).bindPopup(`<b>${d.name}</b>`).addTo(busLayerGroup);
-          marker.options.originalColor = '#000000';
-          marker.options.originalRadius = 3;
-          markers.push(marker);
-          stationLookup[d.name.toLowerCase()] = marker;
-        }
-      });
-      busLoaded = true;
-      enableSearchIfReady();
-    });
-  
-    d3.csv("./data/train_stations.csv", function (error, data) {
-      if (error) throw error;
-      data.forEach(function (d) {
-        let lat = parseFloat(d.latitude);
-        let lon = parseFloat(d.longitude);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          let marker = L.circleMarker([lat, lon], {
-            radius: 2,
-            color: '#42160A',
-            fillColor: '#42160A',
-            opacity: 0.6,  
-            fillOpacity: 0.6,
-            weight: 1
-          }).bindPopup(`<b>${d.name}</b>`).addTo(trainLayerGroup);
-          marker.options.originalColor = '#42160A';
-          marker.options.originalRadius = 3;
-          markers.push(marker);
-          stationLookup[d.name.toLowerCase()] = marker;
-        }
-      });
-      trainLoaded = true;
-      enableSearchIfReady();
-    });
-  */
-  
-    // LayerControls (nur Train Stations)
+
+    // Static layer control element for predefined network isochrone layers.
     const layersControlStatic = L.control.layers({
       "Walk": wmsLayerwalk_static,
       "Cycle": wmsLayercycle_static,
       "Cycle Rental": wmsLayerbicyclerental_static,
-      "E-scooter Rental": wmsLayerescooterrental_static,
+      "E-Scooter Rental": wmsLayerescooterrental_static,
       "Car Sharing ": wmsLayercarsharing_static,
-      "Self-Drive Car": wmsLayerselfdrivecar_static,
+      "Car": wmsLayerselfdrivecar_static,
     }, {
       "Train Stations": trainLayerGroup
     }, { collapsed: false });
-  
-    /*let layersControlDynamic = L.control.layers({
-      "Car Sharing": wmsLayercar_sharing_dynamic,
-      "Self-Drive Car": wmsLayerselfdrivecar_dynamic,
-      "Cycle": wmsLayercycle_dynamic,
-      "Walk": wmsLayerwalk_dynamic,
-      "Bicycle Rental": wmsLayerbicyclerental_dynamic,
-      "eScooter Rental": wmsLayerescooterrental_dynamic,
-    }, {
-      "Train Stations": trainLayerGroup
-    }, { collapsed: false });
-  */
+
+    // Initial dynamic layer control element only with train stations.
     let layersControlDynamic = L.control.layers({}, {
-    "Train Stations": trainLayerGroup
-  }, { collapsed: false });
-      layersControlStatic.addTo(map);
+      "Train Stations": trainLayerGroup
+    }, { collapsed: false });
+    layersControlStatic.addTo(map);
   
-    // UI
+    // User interface dropdown to toggle between static and dynamic modes.
     const switchWrapper = document.createElement("div");
     switchWrapper.className = "dropdown-block"; 
 
@@ -691,29 +635,29 @@
       <option value="static">Static</option>
       <option value="dynamic">Dynamic</option>
     `;
-
     switchWrapper.appendChild(label);
     switchWrapper.appendChild(dropdown);
     document.querySelector(".description").appendChild(switchWrapper);
 
-  
-    const legendContainer = document.createElement("div");
-    legendContainer.id = "legendContainer";
-    legendContainer.style = "margin-top: 15px;";
-    document.querySelector(".sidebar").appendChild(legendContainer);
   
     const stationInput = document.getElementById("stationInput");
     const showBtn = document.getElementById("showIsochroneBtn");
   
 
     let currentBaseLayerChangeHandler = null;
+
+
+    // The toggleMode function handles switching between static and dynamic modes.
+    // It updates map layers, UI elements, and legends to ensure a smooth user experience.
     function toggleMode(mode) {
       clearMapMessages();
       currentMode = mode;
-        if (currentBaseLayerChangeHandler) {
-          map.off('baselayerchange', currentBaseLayerChangeHandler);
-          currentBaseLayerChangeHandler = null;
-        }
+    // This following ensures that in static mode, layer control changes have no effect.
+    // Only dynamic mode requires reacting to such changes due to backend interaction.
+      if (currentBaseLayerChangeHandler) {
+        map.off('baselayerchange', currentBaseLayerChangeHandler);
+        currentBaseLayerChangeHandler = null;
+      }
       const stationInputBlock = document.getElementById("stationInputBlock");
       const allStaticLayers = [
         wmsLayercarsharing_static,
@@ -725,14 +669,15 @@
       ];
 
       const allDynamicLayers = [
-      wmsLayercar_sharing_dynamic,
-      wmsLayercycle_dynamic,
-      wmsLayerwalk_dynamic,
-      wmsLayerescooterrental_dynamic,
-      wmsLayerbicyclerental_dynamic,
-      wmsLayerselfdrivecar_dynamic 
-    ];
+        wmsLayercar_sharing_dynamic,
+        wmsLayercycle_dynamic,
+        wmsLayerwalk_dynamic,
+        wmsLayerescooterrental_dynamic,
+        wmsLayerbicyclerental_dynamic,
+        wmsLayerselfdrivecar_dynamic 
+      ];
 
+      //clear the map before showing any isochrone
       [...allStaticLayers, ...allDynamicLayers].forEach(layer => {
         if (map.hasLayer(layer)) {
           map.removeLayer(layer);
@@ -750,7 +695,7 @@
         });
         map.removeControl(layersControlDynamic);
         layersControlStatic.addTo(map);
-        wmsLayerwalk_static.addTo(map); // Startlayer
+        wmsLayerwalk_static.addTo(map);
         detectLegendFromLayer(wmsLayerwalk_static);
         cartoLayer.addTo(map);
         map.setView([47.3769, 8.5417], 12);
@@ -762,26 +707,27 @@
         stationInputBlock.style.display = "block";
         map.removeControl(layersControlStatic);
         layersControlDynamic.addTo(map);
-        //wmsLayerwalk_dynamic.addTo(map); // Startlayer
       }
 
       document.getElementById("staticText").style.display = (mode === "static") ? "block" : "none";
       document.getElementById("dynamicText").style.display = (mode === "dynamic") ? "block" : "none";
-
     }
+
+
 
     function detectLegendFromLayer(layer) {
       if (layer && layer.options && layer.options.layers) {
-        const fullLayerName = layer.options.layers; // z. B. "GMP_15_Min_City:geodata_walk"
-        const shortLayerName = fullLayerName.split(":")[1]; // "geodata_walk"
+        const fullLayerName = layer.options.layers; 
+        const shortLayerName = fullLayerName.split(":")[1];
         showLegendForLayer(shortLayerName);
       }
     }
-  
+
     dropdown.addEventListener("change", (e) => {
       toggleMode(e.target.value);
     });
   
+    //The web-application starts with static mode
     toggleMode("static");
     detectLegendFromLayer(wmsLayerwalk_static);
     L.control.scale().addTo(map);
@@ -790,420 +736,278 @@
     });
 
 
-  const modeInfoHTML = `
-    <div id="modeInfoOverlay" class="popup-overlay" style="display: none;">
-      <div class="popup-content">
-        <h3>Transport Mode Info</h3>
-        <ul style="text-align: left; padding-left: 1rem;">
-          <li><strong>Walk:</strong> Moving on foot.</li>
-          <li><strong>Cycle:</strong> Riding your own bike.</li>
-          <li><strong>Cycle Rental:</strong> Renting a bike at a bike rental station.</li>
-          <li><strong>eScooter Rental:</strong> Renting an electric scooter at a e-scooter rental station.</li>
-          <li><strong>Car Sharing:</strong> Renting a car at a car rental station.</li>
-          <li><strong>Self-Drive Car:</strong> Driving your own car.</li>
-          
-        </ul>
-        <button onclick="document.getElementById('modeInfoOverlay').style.display='none'">Close</button>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', modeInfoHTML);
-  document.getElementById("infoBtn").addEventListener("click", function () {
-  document.getElementById("modeInfoOverlay").style.display = "flex";
-});
+    function showLegendForLayer(layerName) {
+      const legendUrl = `https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms?service=WMS&version=1.1.0&request=GetLegendGraphic&format=image/png&layer=GMP_15_Min_City:${layerName}`;
 
-function showLegendForLayer(layerName) {
-  const legendUrl = `https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms?service=WMS&version=1.1.0&request=GetLegendGraphic&format=image/png&layer=GMP_15_Min_City:${layerName}`;
+      const legendContainer = document.getElementById("legendContainer");
+      legendContainer.innerHTML = "";
 
-  const legendContainer = document.getElementById("legendContainer");
-  legendContainer.innerHTML = ""; // vorherige Legende löschen
+      const img = document.createElement("img");
+      img.src = legendUrl;
+      img.alt = `Legend for ${layerName}`;
+      img.style = "max-width: 100%; margin-top: 10px; border: 1px solid #ccc; background: white; padding: 5px; border-radius: 4px;";
 
-  const img = document.createElement("img");
-  img.src = legendUrl;
-  img.alt = `Legend for ${layerName}`;
-  img.style = "max-width: 100%; margin-top: 10px; border: 1px solid #ccc; background: white; padding: 5px; border-radius: 4px;";
+      legendContainer.appendChild(img);
+    }
 
-  legendContainer.appendChild(img);
-}
 
-/*
-async function updateDynamicLayersForStation(stationName) {
-  document.getElementById("map-loading-spinner").style.display = "block";
-  await runTest(stationName);
-  document.getElementById("map-loading-spinner").style.display = "none";
-  const response = window.apiResponse;
-  
-
-  if (!response || !response.status) {
-    console.warn("⚠️ Ungültige API-Antwort – Abbruch");
-    return;
-  }
-
-  if (response.status === "skipped") {
-    // ✅ Normale Logik wie bisher
-    const makeLayer = (mode, layerId) => {
-      return L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-        layers: `GMP_15_Min_City:${layerId}`,
-        format: "image/png",
-        transparent: true,
-        attribution: "© GeoServer",
-        CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
-        opacity: 0.7
-      });
-    };
-
-    const newLayers = {
-      "Walk": makeLayer("walk", "geodata_walk"),
-      "Cycle": makeLayer("cycle", "geodata_cycle"),
-      "Cycle Rental": makeLayer("bicycle_rental", "geodata_bicycle_rental"),
-      "E-scooter Rental": makeLayer("escooter_rental", "geodata_escooter_rental"),
-      "Car Sharing": makeLayer("car_sharing", "geodata_car_sharing"),
-      "Self-Drive Car": makeLayer("self-drive-car", "geodata_self_drive_car")
-    };
-
-    // 🧹 Vorherige dynamische Layer entfernen
-    map.eachLayer(layer => {
-      if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
-        map.removeLayer(layer);
+    // The clearMapMessages function clears any success or error messages currently displayed on the map.
+    function clearMapMessages() {
+      if (successControl) {
+        map.removeControl(successControl);
+        successControl = null;
       }
-    });
-
-    // ❌ Alte Layer-Control entfernen
-    if (layersControlDynamic) {
-      map.removeControl(layersControlDynamic);
+      if (errorControl) {
+        map.removeControl(errorControl);
+        errorControl = null;
+      }
     }
 
-    // ✅ Aktiven Layer setzen
-    const activeLayer = newLayers["Walk"];
-    activeLayer.addTo(map);
-    detectLegendFromLayer(activeLayer);
 
-    // 🆕 Neue Layer-Control hinzufügen
-    layersControlDynamic = L.control.layers(newLayers, {
-      "Train Stations": trainLayerGroup
-    }, { collapsed: false }).addTo(map);
+    // The updateDynamicLayersForStation function is crucial for dynamically displaying point isochrones for the selected station.
+    async function updateDynamicLayersForStation(stationName) {
+      currentStationName = stationName;
+      document.getElementById("map-loading-spinner").style.display = "block";
+      clearMapMessages();
 
-  } else if (response.status === "success") {
+      const modeOrder = [
+        "Walk",
+        "Cycle",
+        "Cycle Rental",
+        "E-Scooter Rental",
+        "Car Sharing",
+        "Car"
+      ];
+
+      const modeMapping = {
+        "Walk": "walk",
+        "Cycle": "cycle",
+        "Cycle Rental": "bicycle_rental",
+        "E-Scooter Rental": "escooter_rental",
+        "Car Sharing": "car_sharing",
+        "Car": "self-drive-car"
+      };
+
+      const newLayers = {};
+      const loadedModes = {};
+
+      modeOrder.forEach(label => {
+        newLayers[label] = L.layerGroup();
+        loadedModes[label] = false;
+      });
+
+      const firstLabel = "Walk";
+      const firstMode = modeMapping[firstLabel];
+      clearMapMessages();
+      const firstResponse = await runTest(stationName, firstMode);
+
+
+      document.getElementById("map-loading-spinner").style.display = "none";
+
+      if (!firstResponse || !firstResponse.status) {
+        console.warn("⚠️ API Answer failed.");
+        return;
+      }
+
+      // Fetches either a freshly generated or pre-existing point isochrone from the database.
+      const insertLayerFromDB = (mode, label) => {
+        const layer = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
+          layers: `GMP_15_Min_City:${mode === 'self-drive-car' ? 'geodata_self_drive_car' : 'geodata_' + mode}`,
+          format: "image/png",
+          transparent: true,
+          attribution: "© GeoServer",
+          CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
+          opacity: 0.7
+        });
+        newLayers[label] = layer;
+        loadedModes[label] = true;
+      };
     
-    console.log("✅ API-Antwort = success → spätere Logik kommt hier hin.");
-  } else {
-    console.warn("❔ Unerwarteter API-Status:", response.status);
-  }
-}
+      // The isochrone either already exists in the database or is successfully generated after the frontend sends a request to the backend.
+      if (firstResponse.status === "skipped" || firstResponse.status === "success") {
+        insertLayerFromDB(firstMode, firstLabel);
+        showMapSuccess(firstResponse.station_names, firstResponse.used_modes);
 
+        const key = `${stationName}_${firstMode}`;
+        localStorage.setItem(key, JSON.stringify({
+          station_names: firstResponse.station_names,
+          used_modes: firstResponse.used_modes
+        }));
+      }
 
-*/
-//let currentBaseLayerChangeHandler = null;
-function clearMapMessages() {
-  if (successControl) {
-    map.removeControl(successControl);
-    successControl = null;
-  }
-  if (errorControl) {
-    map.removeControl(errorControl);
-    errorControl = null;
-  }
-}
+      map.eachLayer(layer => {
+        if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
+          map.removeLayer(layer);
+        }
+      });
 
+      if (layersControlDynamic) {
+        map.removeControl(layersControlDynamic);
+      }
 
-async function updateDynamicLayersForStation(stationName) {
-  currentStationName = stationName;
-  document.getElementById("map-loading-spinner").style.display = "block";
-  clearMapMessages();
+      if (loadedModes[firstLabel]) {
+        newLayers[firstLabel].addTo(map);
+        detectLegendFromLayer(newLayers[firstLabel]);
+      }
 
-  const modeOrder = [
-    "Walk",
-    "Cycle",
-    "Cycle Rental",
-    "E-scooter Rental",
-    "Car Sharing",
-    "Self-Drive Car"
-  ];
+      const buildLayerControl = () => {
+        const layers = {};
+        modeOrder.forEach(label => {
+          layers[label] = newLayers[label];
+        });
 
-  const modeMapping = {
-    "Walk": "walk",
-    "Cycle": "cycle",
-    "Cycle Rental": "bicycle_rental",
-    "E-scooter Rental": "escooter_rental",
-    "Car Sharing": "car_sharing",
-    "Self-Drive Car": "self-drive-car"
-  };
+        if (layersControlDynamic) {
+          map.removeControl(layersControlDynamic);
+        }
 
-  const newLayers = {};
-  const loadedModes = {};
+        layersControlDynamic = L.control.layers(layers, {
+          "Train Stations": trainLayerGroup
+        }, { collapsed: false }).addTo(map);
+      };
 
-  // Initial: Platzhalter für alle Modi
-  modeOrder.forEach(label => {
-    newLayers[label] = L.layerGroup(); // leer
-    loadedModes[label] = false;
-  });
+      buildLayerControl();
+      if (currentBaseLayerChangeHandler) {
+          map.off('baselayerchange', currentBaseLayerChangeHandler);
+        }
 
-  // Erstes Request nur für Walk
-  const firstLabel = "Walk";
-  const firstMode = modeMapping[firstLabel];
-  clearMapMessages();
-  const firstResponse = await runTest(stationName, firstMode);
+      currentBaseLayerChangeHandler = async function (e) {
+        const modeLabel = e.name;
+        const modeKey = modeMapping[modeLabel];
 
+        if (!modeKey) return;
 
-  document.getElementById("map-loading-spinner").style.display = "none";
+        if (loadedModes[modeLabel]) {
+          clearMapMessages();
 
-  // Nur weiter, wenn Antwort da ist
-  if (!firstResponse || !firstResponse.status) {
-    console.warn("⚠️ API-Antwort fehlerhaft – Abbruch.");
-    return;
-  }
+          const cacheKey = `${currentStationName}_${modeKey}`;
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            showMapSuccess(parsed.station_names, parsed.used_modes);
+          } else {
+            showMapSuccess(null, null);
+          }
+          return;
+        }
 
-  const insertLayerFromDB = (mode, label) => {
-    const layer = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
-      layers: `GMP_15_Min_City:${mode === 'self-drive-car' ? 'geodata_self_drive_car' : 'geodata_' + mode}`,
-      format: "image/png",
-      transparent: true,
-      attribution: "© GeoServer",
-      CQL_FILTER: `mode='${mode}' AND type='point' AND name='${stationName}'`,
-      opacity: 0.7
-    });
-    newLayers[label] = layer;
-    loadedModes[label] = true;
-  };
+        clearMapMessages();
+        document.getElementById("map-loading-spinner").style.display = "block";
+        const result = await runTest(currentStationName, modeKey);
 
-if (firstResponse.status === "skipped" || firstResponse.status === "success") {
-  insertLayerFromDB(firstMode, firstLabel);
-  showMapSuccess(firstResponse.station_names, firstResponse.used_modes);
+        document.getElementById("map-loading-spinner").style.display = "none";
 
-  // ✅ Speichern
-  const key = `${stationName}_${firstMode}`;
-  localStorage.setItem(key, JSON.stringify({
-    station_names: firstResponse.station_names,
-    used_modes: firstResponse.used_modes
-  }));
-}
+        if (!result || !result.status) return;
 
-  // Karte aufräumen
-  map.eachLayer(layer => {
-    if (layer.wmsParams && layer.wmsParams.layers && layer.wmsParams.layers.includes("geodata_")) {
-      map.removeLayer(layer);
-    }
-  });
+        if (result.status === "skipped" || result.status === "success") {
+          insertLayerFromDB(modeKey, modeLabel);
+          newLayers[modeLabel].addTo(map);
+          detectLegendFromLayer(newLayers[modeLabel]);
+          buildLayerControl();
+          showMapSuccess(result.station_names, result.used_modes);
+          const key = `${currentStationName}_${modeKey}`;
+          localStorage.setItem(key, JSON.stringify({
+            station_names: result.station_names,
+            used_modes: result.used_modes
+          }));
+        } else if (result.status === "failed") {
+          const errorText = result.error || "";
+          const reasonText = result.reason ? ` (${result.reason})` : "";
+          showMapError(`${errorText}${reasonText}`);
+        }
+      };
 
-  if (layersControlDynamic) {
-    map.removeControl(layersControlDynamic);
-  }
-
-  // Walk (wenn vorhanden) direkt aktivieren
-  if (loadedModes[firstLabel]) {
-    newLayers[firstLabel].addTo(map);
-    detectLegendFromLayer(newLayers[firstLabel]);
-  }
-
-  // LayerControl aufbauen
-  const buildLayerControl = () => {
-    const layers = {};
-    modeOrder.forEach(label => {
-      layers[label] = newLayers[label];
-    });
-
-    if (layersControlDynamic) {
-      map.removeControl(layersControlDynamic);
+      map.on('baselayerchange', currentBaseLayerChangeHandler);
     }
 
-    layersControlDynamic = L.control.layers(layers, {
-      "Train Stations": trainLayerGroup
-    }, { collapsed: false }).addTo(map);
-  };
 
-  buildLayerControl();
-  if (currentBaseLayerChangeHandler) {
-      map.off('baselayerchange', currentBaseLayerChangeHandler);
+    // The runTest function is responsible for sending a request to the backend and receiving the response.
+    async function runTest(stationName, mode) {
+      try {
+        const response = await fetch('https://geoflaskprd.ethz.ch/app/compute/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: mode,
+            network_isochrones: false,
+            input_station: stationName,
+            performance: true,
+            force_update: false
+          })
+        });
+
+        const data = await response.json();
+        console.log("✅ API Response:");
+        console.dir(data);
+        return data; 
+      } catch (error) {
+        console.error("❌ Request failed:", error);
+      }
     }
 
-currentBaseLayerChangeHandler = async function (e) {
-  const modeLabel = e.name;
-  const modeKey = modeMapping[modeLabel];
 
-  if (!modeKey) return;
 
-  if (loadedModes[modeLabel]) {
-    // 🧹 Fehlerfeld bereinigen, da gecachter Erfolg angezeigt wird
-    clearMapMessages();
+    function showMapError(message) {
+      if (errorControl) {
+        map.removeControl(errorControl);
+      }
 
-    const cacheKey = `${currentStationName}_${modeKey}`;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      showMapSuccess(parsed.station_names, parsed.used_modes);
-    } else {
-      showMapSuccess(null, null);
+      errorControl = L.control({ position: 'bottomright' });
+
+      errorControl.onAdd = function () {
+        const div = L.DomUtil.create('div', 'leaflet-error-box');
+        div.innerHTML = `❌ ${message}`;
+        div.style.background = '#f8d7da';
+        div.style.border = '1px solid #f5c6cb';
+        div.style.color = '#721c24';
+        div.style.padding = '8px 12px';
+        div.style.borderRadius = '6px';
+        div.style.fontSize = '13px';
+        div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+        return div;
+      };
+
+      errorControl.addTo(map);
     }
-    return;
-  }
-
-  clearMapMessages();
-  document.getElementById("map-loading-spinner").style.display = "block";
-  const result = await runTest(currentStationName, modeKey);
-
-  document.getElementById("map-loading-spinner").style.display = "none";
-
-  if (!result || !result.status) return;
-
-  if (result.status === "skipped" || result.status === "success") {
-    insertLayerFromDB(modeKey, modeLabel);
-    newLayers[modeLabel].addTo(map);
-    detectLegendFromLayer(newLayers[modeLabel]);
-    buildLayerControl();
-    showMapSuccess(result.station_names, result.used_modes);
-    const key = `${currentStationName}_${modeKey}`;
-    localStorage.setItem(key, JSON.stringify({
-      station_names: result.station_names,
-      used_modes: result.used_modes
-    }));
-  } else if (result.status === "failed") {
-    const errorText = result.error || "";
-    const reasonText = result.reason ? ` (${result.reason})` : "";
-    showMapError(`${errorText}${reasonText}`);
-  }
-};
-
-// Neuen Listener aktivieren
-map.on('baselayerchange', currentBaseLayerChangeHandler);
-}
-
-
-async function runTest(stationName, mode) {
-  try {
-    const response = await fetch('http://geoflaskprd.ethz.ch/app/compute/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: mode,
-        network_isochrones: false,
-        input_station: stationName,
-        performance: true,
-        /*arrival_time: new Date("2025-05-09T09:30:00.000Z").toISOString(),
-        timestamp: new Date().toISOString(),*/
-        force_update: false
-      })
-    });
-
-    const data = await response.json();
-    console.log("✅ API Response:");
-    console.dir(data);
-    window.apiResponse = data;
-    console.log(apiResponse.status);  
-    console.log(apiResponse.type);   
-    console.log(apiResponse.mode);   
-    console.log(apiResponse.runtime);
-    return data;  // ✅ DAS HAT GEFÄHLT
-  } catch (error) {
-    console.error("❌ Request failed:", error);
-  }
-}
-
-/*async function runTest(stationName, mode) {
-  try {
-    const response = await fetch('http://127.0.0.1:8000/app/compute/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: mode,
-        network_isochrones: false,
-        input_station: stationName,
-        performance: true,
-        force_update: false
-      })
-    });
-
-    const data = await response.json();
-    console.log("✅ API Response:");
-    console.dir(data);
-    window.apiResponse = data;
-    console.log(apiResponse.status);  
-    console.log(apiResponse.type);   
-    console.log(apiResponse.mode);   
-    console.log(apiResponse.runtime);
-    return data;  // ✅ DAS HAT GEFÄHLT
-  } catch (error) {
-    console.error("❌ Request failed:", error);
-  }
-}
-*/
-
-
-function showMapError(message) {
-  if (errorControl) {
-    map.removeControl(errorControl);
-  }
-
-  errorControl = L.control({ position: 'bottomright' });
-
-  errorControl.onAdd = function () {
-    const div = L.DomUtil.create('div', 'leaflet-error-box');
-    div.innerHTML = `❌ ${message}`;
-    div.style.background = '#f8d7da';
-    div.style.border = '1px solid #f5c6cb';
-    div.style.color = '#721c24';
-    div.style.padding = '8px 12px';
-    div.style.borderRadius = '6px';
-    div.style.fontSize = '13px';
-    div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-    return div;
-  };
-
-  errorControl.addTo(map);
-}
 
 
 
-function showMapSuccess(stations, modes) {
-  // 🔧 Robuste Formatierung
-  function formatList(value, fallbackText) {
-    if (Array.isArray(value) && value.length > 0) return value.join(', ');
-    if (typeof value === "string" && value.toLowerCase() !== "none") return value;
-    return fallbackText;
-  }
+    function showMapSuccess(stations, modes) {
+      function formatList(value, fallbackText) {
+        if (Array.isArray(value) && value.length > 0) return value.join('; ');
+        if (typeof value === "string" && value.toLowerCase() !== "none") return value;
+        return fallbackText;
+      }
 
-  if (successControl) {
-    map.removeControl(successControl);
-    successControl = null;
-  }
+      if (successControl) {
+        map.removeControl(successControl);
+        successControl = null;
+      }
 
-  successControl = L.control({ position: 'bottomleft' }); // oben rechts = sichtbar
+      successControl = L.control({ position: 'bottomleft' });
 
-  successControl.onAdd = function () {
-    const div = L.DomUtil.create('div', 'leaflet-success-box');
-    const stationList = formatList(stations, 'No stations used');
-    const modeList = formatList(modes, 'No other modes used');
+      successControl.onAdd = function () {
+        const div = L.DomUtil.create('div', 'leaflet-success-box');
+        const stationList = formatList(stations, 'No stations used');
+        const modeList = formatList(modes, 'No other modes used');
 
-    div.innerHTML = `
-      <b>Stations:</b> ${stationList}<br>
-      <b>Modes:</b> ${modeList}
-    `;
-    div.style.background = '#d4edda';
-    div.style.border = '1px solid #c3e6cb';
-    div.style.color = '#155724';
-    div.style.padding = '8px 12px';
-    div.style.borderRadius = '6px';
-    div.style.fontSize = '13px';
-    div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-    div.style.marginTop = '10px';
-    div.style.marginRight = '10px';
-    return div;
-  };
+        div.innerHTML = `
+          <b>Stations:</b> ${stationList}<br>
+          <b>Modes:</b> ${modeList}
+        `;
+        div.style.background = '#d4edda';
+        div.style.border = '1px solid #c3e6cb';
+        div.style.color = '#155724';
+        div.style.padding = '8px 12px';
+        div.style.borderRadius = '6px';
+        div.style.fontSize = '13px';
+        div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+        div.style.marginTop = '10px';
+        div.style.marginRight = '10px';
+        return div;
+      };
 
-  successControl.addTo(map);
-}
-
-
-function clearMapMessages() {
-  if (successControl) {
-    map.removeControl(successControl);
-    successControl = null;
-  }
-  if (errorControl) {
-    map.removeControl(errorControl);
-    errorControl = null;
-  }
-}
-
+      successControl.addTo(map);
+    }
 
   </script>
   
