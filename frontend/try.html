@@ -407,7 +407,7 @@
       opacity: 0.7
     });
 
-    // Definining 6 initial isochrone layers of the different modes for the point isochrones.
+    // Defining 6 initial isochrone layers of the different modes for point isochrones.
     let wmsLayerwalk_dynamic = L.tileLayer.wms("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/wms", {
       layers: "GMP_15_Min_City:geodata_walk",
       format: "image/png",
@@ -514,7 +514,7 @@
     }
 
 
-    // Get the in database stored train stations and show it on the map. 
+    // Get train stations stored in database and show it on the map. 
     fetch("https://baug-ikg-gis-01.ethz.ch:8443/geoserver/GMP_15_Min_City/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=GMP_15_Min_City:train_stations&outputFormat=application/json")
       .then(res => res.json())
       .then(data => {
@@ -652,7 +652,7 @@
     function toggleMode(mode) {
       clearMapMessages();
       currentMode = mode;
-    // This following ensures that in static mode, layer control changes have no effect.
+    // The following ensures that in static mode, layer control change events have no effect.
     // Only dynamic mode requires reacting to such changes due to backend interaction.
       if (currentBaseLayerChangeHandler) {
         map.off('baselayerchange', currentBaseLayerChangeHandler);
@@ -677,7 +677,7 @@
         wmsLayerselfdrivecar_dynamic 
       ];
 
-      //clear the map before showing any isochrone
+      // Clear the map before showing any isochrone.
       [...allStaticLayers, ...allDynamicLayers].forEach(layer => {
         if (map.hasLayer(layer)) {
           map.removeLayer(layer);
@@ -727,7 +727,7 @@
       toggleMode(e.target.value);
     });
   
-    //The web-application starts with static mode
+    // The web-application starts with static mode. 
     toggleMode("static");
     detectLegendFromLayer(wmsLayerwalk_static);
     L.control.scale().addTo(map);
@@ -764,7 +764,7 @@
     }
 
 
-    // The updateDynamicLayersForStation function is crucial for dynamically displaying point isochrones for the selected station.
+    // The updateDynamicLayersForStation function is crucial for dynamically displaying point isochrones for the selected station outside of Zurich.
     async function updateDynamicLayersForStation(stationName) {
       currentStationName = stationName;
       document.getElementById("map-loading-spinner").style.display = "block";
