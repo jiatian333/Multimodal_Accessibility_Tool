@@ -9,6 +9,11 @@ Responsibilities:
 - Eagerly load the distance cache to prevent cold-start latency.
 - Initialize in-memory travel data structures shared across requests.
 
+- Preload always-needed stationary resources (CRS, water geometries, public transport stations).
+- Avoid loading heavy graphs/polygons at startup — these are loaded on-demand per request.
+- Initialize in-memory travel data structures shared across requests.
+- Initialize the distance cache to prevent cold-start latency.
+
 Functions:
 ----------
 - `bind_startup_event(app: FastAPI)`: Registers the startup hook with a FastAPI app.
@@ -42,21 +47,23 @@ def bind_startup_event(app: FastAPI) -> None:
     @app.on_event("startup")
     async def startup_event() -> None:
         """
-        Asynchronously preloads static data for travel-time processing at app launch.
-
+        Preloads essential lightweight resources when the app launches.
+        
         Loads:
-        - Walking, biking, driving graphs
-        - Polygon boundaries (city, canton, bodies of water)
-        - CRS and public transport stations
+        - CRS definitions (source/target coordinate systems)
+        - Water geometries and spatial index
+        - Public transport stations (for station lookup)
         - Distance cache for nearest POIs
         - Initializes shared travel data cache
+
+        Heavy resources (graphs, city/canton polygons) are loaded on-demand in each request.
 
         Returns:
             None
         """
-        logger.info("Starting up: Preloading spatial graph and station data...")
-        stationary_data.load()
-
+        logger.info("Starting up: Preloading crucial static data...")
+        stationary_data.load_start()
+        
         logger.info("Initializing travel data and distance cache...")
         app.state.travel_data = load_data()
         _ = distance_cache.data

@@ -135,7 +135,7 @@ def extract_contours(
 def generate_isochrones(
     travel_data: TravelData,
     mode: TransportModes,
-    city_poly: Polygon,
+    city_poly: Optional[Polygon],
     initial_crs: CRS,
     target_crs: CRS,
     transformer: Transformer,
@@ -161,7 +161,7 @@ def generate_isochrones(
     Args:
         travel_data (TravelData): Dictionary of travel time data per mode.
         mode (TransportModes): Mode of transportation (e.g., "walk", "cycle", etc.).
-        city_poly (Polygon): Bounding city polygon in WGS84.
+        city_poly (Optional[Polygon]): Bounding city polygon in WGS84 (only required if not performance).
         initial_crs (CRS): CRS of initial data (EPSG:4326).
         target_crs (CRS): CRS of target data for accurate distance calculation (EPSG:2056).
         transformer (Transformer): Transforms data from initial crs to target crs.

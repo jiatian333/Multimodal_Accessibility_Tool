@@ -27,7 +27,7 @@ from app.core.config import SEED, TransportModes
 
 def generate_radial_grid(
     center_point: Point,
-    polygon: Polygon,
+    polygon: Optional[Polygon],
     water_gdf: gpd.GeoDataFrame,
     water_sindex: gpd.sindex.SpatialIndex,
     max_radius: float,
@@ -48,7 +48,7 @@ def generate_radial_grid(
 
     Args:
         center_point (Point): Center of the radial grid (EPSG:4326).
-        polygon (Polygon): Study area boundary.
+        polygon (Optional[Polygon]): Study area boundary (only required if not performance).
         water_gdf (GeoDataFrame): Water bodies (projected).
         water_sindex (gpd.sindex.SpatialIndex): R-tree index of the water_gdf for fast spatial queries.
         max_radius (float): Maximum radius for sampling in meters.

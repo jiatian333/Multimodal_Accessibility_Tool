@@ -204,7 +204,6 @@ async def compute_isochrones(
             include_art=["Blaue Zone", "Weiss markiert"]
         )
 
-    stationary_data.load()
     travel_data = request.app.state.travel_data
     
     if not check_travel_data_integrity(travel_data):
@@ -213,11 +212,14 @@ async def compute_isochrones(
             status="failed", 
             error="Travel data corrupted. Please validate accuracy before continuing."
         )
-
-    if req.network_isochrones:
-        return await compute_network_isochrones(travel_data, req, start, background_tasks)
-    else:
-        return await compute_point_isochrones(travel_data, req, start, background_tasks)
+        
+    try: 
+        if req.network_isochrones:
+            return await compute_network_isochrones(travel_data, req, start, background_tasks)
+        else:
+            return await compute_point_isochrones(travel_data, req, start, background_tasks)
+    finally:
+        stationary_data.unload_mode_resources()
 
 async def compute_network_isochrones(
     travel_data: TravelData, 
@@ -238,6 +240,7 @@ async def compute_network_isochrones(
         ComputeResponse: Status dictionary with metadata or an error message.
     """
     
+    stationary_data.load_mode_resources(mode=req.mode)
     logger.info("Computing network isochrones.")
     random_points = generate_adaptive_sample_points(
         stationary_data.city_poly,
@@ -333,6 +336,9 @@ async def compute_point_isochrones(
     """
     
     logger.info(f"Computing point isochrones for station: {req.input_station}.")
+    
+    if not req.performance:
+        stationary_data.load_mode_resources(req.mode)
     
     lookup = stationary_data.public_transport_stations.set_index("name")[["longitude", "latitude"]].to_dict("index")
     coords = lookup.get(req.input_station)

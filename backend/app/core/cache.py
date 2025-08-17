@@ -13,23 +13,26 @@ Responsibilities:
 - Set up coordinate reference systems and transformations (WGS84 ↔ Swiss LV95).
 - Load and merge urban/cantonal boundaries from OSM.
 - Download, clean, and cache large water features for exclusion.
-- Retrieve graphs (walk, bike, drive) and save to disk for caching.
+- Retrieve OSM-based graphs (walk, bike, drive) and cache them to disk.
 - Load public transport station metadata and build an R-tree index.
+- Manage memory usage by selectively loading and unloading resources.
 
 Key Components:
 ---------------
-- `StationaryData`: Singleton-style class that prevents redundant geodata downloads.
-- `load()`: Entry point for loading all geospatial assets if not already loaded.
-- `_load_*()`: Private helpers for CRS, geometry, graph, and station loading.
+- `StationaryData`: Singleton-style class preventing redundant geodata downloads.
+- `load_start()`: Loads CRS, water bodies, and public transport stations at startup.
+- `load_mode_resources(mode)`: Loads polygons and graphs specific to the given mode.
+- `unload_mode_resources()`: Frees mode-specific resources from memory after use.
+- `_load_*()`: Private helpers for CRS, polygons, water, graphs, and stations.
 
 Usage:
 ------
-Typical use pattern in the application:
-
     from app.core.cache import stationary_data
-    stationary_data.load()
-    G = stationary_data.G_canton
-    stations = stationary_data.public_transport_stations
+    stationary_data.load_start()
+    ...
+    stationary_data.load_mode_resources("cycle")
+    # do computation
+    stationary_data.unload_mode_resources()
 
 Dependencies:
 -------------
@@ -55,7 +58,7 @@ from tqdm import tqdm
 
 from app.core.config import (
     CITY_AREA, NETWORK_AREA, SOURCE_CRS, 
-    TARGET_CRS, GRAPH_DIR, WATER_AREA
+    TARGET_CRS, GRAPH_DIR, WATER_AREA, TransportModes
 )
 from app.data.public_transport import load_public_transport_stations
 from app.utils.rtree_structure import build_rtree
@@ -74,7 +77,6 @@ class StationaryData:
     - Public transport station data and its R-tree spatial index
 
     Attributes:
-        loaded (bool): Indicates whether the data has been loaded.
         source_crs (CRS): Source coordinate reference system (EPSG:4326).
         target_crs (CRS): Target CRS for Swiss projection (EPSG:2056).
         transformer (Transformer): Transformer between WGS84 and LV95.
@@ -93,7 +95,6 @@ class StationaryData:
     """
     
     def __init__(self) -> None:
-        self.loaded: bool = False
         self.source_crs: Optional[CRS] = None
         self.target_crs: Optional[CRS] = None
         self.transformer: Optional[Transformer] = None
@@ -112,39 +113,81 @@ class StationaryData:
 
         self.public_transport_stations: Optional[pd.DataFrame] = None
         self.idx: Optional[Index] = None
+        
+    def load_start(self) -> None:
+        """
+        Load CRS, water geometries, and public transport stations at startup.
 
-    def load(self) -> None:
+        This is called once at application startup and ensures that the minimum
+        always-required resources are preloaded and kept in memory.
+
+        Loads:
+            - CRS transformer
+            - Water bodies
+            - Public transport stations and R-tree index
         """
-        Loads and caches all stationary data if not already loaded.
-        Prevents redundant expensive API/geodata calls.
-        """
-        if self.loaded:
+        if self.water_gdf is not None:
             return
-        
-        logger.info("Loading stationary geospatial data (graph, polygons, transformer, stations)...")
-        self._load_crs()
-        
-        loading_tasks = [
-            ("Polygons", self._load_polygons),
-            ("Water Bodies", self._load_water),
-            ("Walking Graphs", self._load_walking_graphs),
-            ("Bike Graphs", self._load_bike_graphs),
-            ("Car Graphs", self._load_car_graphs)
-        ]
 
+        logger.info("Loading startup resources (CRS, water geometries, stations)...")
+        self._load_crs()
+
+        tasks = [("Water Bodies", self._load_water), ("Stations", self._load_stations)]
         with ThreadPoolExecutor() as executor:
-            futures = {executor.submit(func): name for name, func in loading_tasks}
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Loading Static Data"):
+            futures = {executor.submit(func): name for name, func in tasks}
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Loading Startup Resources"):
                 name = futures[future]
                 try:
                     future.result()
                     logger.info(f"{name} loaded successfully.")
                 except Exception as e:
                     logger.error(f"Error loading {name}: {e}")
-                    
-        self._load_stations()
-        self.loaded = True
-        logger.info("Stationary data preloaded.")
+        
+    def load_mode_resources(self, mode: TransportModes) -> None:        
+        """
+        Load polygons and graphs required for isochrone computation of a given mode.
+        This method is called only when a non-performance computation is requested.
+
+        Args:
+            mode (TransportModes): Transport mode identifier. Determines which graphs to load.
+                - "cycle", "escooter_rental", "bicycle_rental": Loads bike graphs.
+                - "self-drive-car", "car_sharing": Loads car graphs.
+                - All modes: Load polygons and walking graphs.
+        """
+        logger.info(f"Loading polygons and graphs for mode: {mode}")
+
+        tasks = [("Polygons", self._load_polygons), ("Walking Graphs", self._load_walking_graphs)]
+        if mode in ["cycle", "escooter_rental", "bicycle_rental"]:
+            tasks.append(("Bike Graphs", self._load_bike_graphs))
+        elif mode in ["self-drive-car", "car_sharing"]:
+            tasks.append(("Car Graphs", self._load_car_graphs))
+
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(func): name for name, func in tasks}
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Loading Mode Resources"):
+                name = futures[future]
+                try:
+                    future.result()
+                    logger.info(f"{name} loaded successfully.")
+                except Exception as e:
+                    logger.error(f"Error loading {name}: {e}")
+
+    def unload_mode_resources(self) -> None:
+        """
+        Frees mode-specific resources from memory.
+
+        Clears city/canton polygons and all graph objects from memory to reduce
+        resource usage. Water bodies, CRS, and stations remain cached for reuse.
+        """
+        
+        self.city_poly = None
+        self.canton_poly = None
+        self.G_city = None
+        self.G_canton = None
+        self.G_bike_city = None
+        self.G_bike_canton = None
+        self.G_car_city = None
+        self.G_car_canton = None
 
     def _load_crs(self) -> None:
         """

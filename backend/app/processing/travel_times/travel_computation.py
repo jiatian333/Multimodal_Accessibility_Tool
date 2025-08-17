@@ -294,8 +294,8 @@ async def point_travel_times_async(
     center: Point,
     points: List[Point],
     idx: Dict[str, Index],
-    G: nx.MultiDiGraph,
-    polygon: Polygon,
+    G: Optional[nx.MultiDiGraph],
+    polygon: Optional[Polygon],
     public_transport_modes: pd.DataFrame,
     mode: TransportModes, 
     arr: str,
@@ -326,8 +326,8 @@ async def point_travel_times_async(
         center (Point): The origin coordinate of the isochrone (in WGS84).
         points (List[Point]): Destination points to calculate the travel time to.
         idx (Dict[str, Index]): R-tree indices to quickly find nearby POIs or stations.
-        G (nx.MultiDiGraph): Walking network graph.
-        polygon (Polygon): Bounding area polygon (usually city limits).
+        G (Optional[nx.MultiDiGraph]): Walking network graph (only required if not performance).
+        polygon (Optional[Polygon]): Bounding area polygon (usually city limits, only required if not performance).
         public_transport_modes (pd.DataFrame): Optional filtering information for PT POIs.
         mode (TransportModes): Travel mode under analysis (e.g., 'walk', 'car_sharing').
         arr (str): Arrival time (ISO 8601).
